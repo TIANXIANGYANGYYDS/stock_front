@@ -1,0 +1,55 @@
+# 1) 安装 nginx
+sudo apt update -y
+sudo apt install -y nginx
+
+# 2) 创建前端静态文件目录
+sudo mkdir -p /var/www/frontend
+
+# 3) 把前端打包产物拷进去
+# 先在你的前端项目里执行 npm run build，生成 dist 目录
+sudo cp -r dist/* /var/www/frontend/
+
+# 4) 删除默认站点（可选，但建议）
+sudo rm -f /etc/nginx/sites-enabled/default
+
+# 5) 写一个新的 nginx 配置，监听 8088
+sudo tee /etc/nginx/conf.d/frontend.conf > /dev/null <<'EOF'
+server {
+    listen 8088;
+    server_name _;
+
+    root /var/www/frontend;
+    index index.html;
+
+    # 前端静态文件 / SPA 路由
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 后端接口代理
+    location /api/ {
+        proxy_pass http://127.0.0.1:8092/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+# 6) 检查配置是否正确
+sudo nginx -t
+
+# 7) 启动并设置开机自启
+sudo systemctl enable nginx
+sudo systemctl restart nginx
+
+# 8) 如果你开了防火墙，放行 8088
+sudo ufw allow 8088/tcp
+
+# 9) 查看 nginx 状态
+sudo systemctl status nginx --no-pager
+
+
+
+/var/www/StockNewKLine/dist
