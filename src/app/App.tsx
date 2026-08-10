@@ -7,8 +7,10 @@ import { CreatorInsightsView } from './features/creators/CreatorInsightsView';
 import {
   getLatestTradeDate,
 } from './lib/api';
+import { useRealtimeMarketIndices } from './hooks/useRealtimeQuotes';
 
 export default function App() {
+  const realtimeIndices = useRealtimeMarketIndices();
   const [activeView, setActiveView] = useState<WorkspaceView>('decision');
   const [tradeDate, setTradeDate] = useState<string>();
   const [tradeDateLoading, setTradeDateLoading] = useState(true);
@@ -46,8 +48,10 @@ export default function App() {
       <TerminalHeader
         activeView={activeView}
         tradeDate={tradeDate}
-        marketLoading={tradeDateLoading}
-        marketError={tradeDateError}
+        realtimeIndices={realtimeIndices.data}
+        indicesLoading={realtimeIndices.initialLoading}
+        indicesDelayed={realtimeIndices.delayed}
+        indicesError={realtimeIndices.error}
         onViewChange={setActiveView}
       />
 
