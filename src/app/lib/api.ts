@@ -389,6 +389,199 @@ interface RawMorningAnalysis {
   };
 }
 
+export interface RawCreatorAccount {
+  rank?: number;
+  creator_id?: string;
+  display_name?: string;
+  platform?: string;
+  account_key?: string;
+  platform_account_id?: string;
+  homepage_url?: string;
+  handle?: string;
+  alias?: string;
+  enabled?: boolean;
+  verification_status?: string;
+  notes?: string;
+}
+
+export interface RawCreatorOpinion {
+  opinion_id?: string;
+  work_key?: string;
+  market_scope?: string;
+  target_type?: string;
+  target_id?: string | null;
+  target_name?: string;
+  direction?: string;
+  stance_score?: number | string | null;
+  claim?: string;
+  opinion?: string;
+  horizon?: string;
+  valid_from?: string;
+  valid_until?: string | null;
+  metric?: string | null;
+  conditions?: unknown;
+  confidence?: number | string | null;
+  verifiable?: boolean | null;
+  source_quote?: string;
+  verification_date?: string | null;
+}
+
+export interface RawVerifiedCreatorOpinion {
+  opinion_id?: string;
+  work_key?: string;
+  platform?: string;
+  published_at_beijing?: string;
+  target_type?: string;
+  target_name?: string;
+  direction?: string;
+  opinion?: string;
+  verification_date?: string | null;
+  verified_at_beijing?: string | null;
+  verdict?: string | null;
+  score?: number | string | null;
+  reason?: string | null;
+}
+
+export interface RawCreatorWork {
+  work_key?: string;
+  a_share_opinions?: RawCreatorOpinion[] | null;
+  account_id?: string;
+  analysis?: {
+    summary?: string;
+    analysis_model?: string;
+    analyzed_at?: string;
+  } | null;
+  asr_text?: string;
+  canonical_url?: string;
+  content_type?: string;
+  creator_id?: string;
+  creator_name?: string;
+  duration_ms?: number | string | null;
+  extracted_text?: string;
+  is_a_share_relevant?: boolean;
+  media_url?: string;
+  ocr_text?: string;
+  platform?: string;
+  published_at?: string;
+  published_at_beijing?: string;
+  source_text?: string;
+  status?: { status?: string; reason?: string | null } | string | null;
+  title?: string;
+}
+
+export interface RawCreatorOpinionAnalysis {
+  creator_id?: string;
+  creator_name?: string;
+  accuracy_score?: number | string | null;
+  verified_opinions?: RawVerifiedCreatorOpinion[] | null;
+  pending_opinions?: RawVerifiedCreatorOpinion[] | null;
+}
+
+export interface CreatorAccount {
+  rank: number;
+  creatorId: string;
+  displayName: string;
+  platform: string;
+  accountKey: string;
+  platformAccountId: string;
+  handle: string;
+  alias: string;
+  homepageUrl: string;
+  enabled: boolean;
+  verificationStatus: string;
+  notes: string;
+}
+
+export interface CreatorOpinion {
+  opinionId: string;
+  workKey: string;
+  marketScope: string;
+  targetType: string;
+  targetId: string | null;
+  targetName: string;
+  direction: string;
+  stanceScore: number | null;
+  claim: string;
+  horizon: string;
+  validFrom: string;
+  validUntil: string;
+  metric: string;
+  conditions: string[];
+  confidence: number | null;
+  verifiable: boolean | null;
+  sourceQuote: string;
+  verificationDate: string;
+}
+
+export interface CreatorWorkSummary {
+  workKey: string;
+  creatorId: string;
+  creatorName: string;
+  accountId: string;
+  platform: string;
+  title: string;
+  contentType: string;
+  publishedAt: string;
+  canonicalUrl: string;
+  status: string;
+  isAShareRelevant: boolean;
+  opinions: CreatorOpinion[];
+  summary?: string;
+}
+
+export interface CreatorWorkDetail extends CreatorWorkSummary {
+  summary: string;
+  analysisModel: string;
+  analyzedAt: string;
+  sourceText: string;
+  extractedText: string;
+  asrText: string;
+  ocrText: string;
+  mediaUrl: string;
+  durationMs: number | null;
+}
+
+export interface VerifiedCreatorOpinion {
+  opinionId: string;
+  workKey: string;
+  platform: string;
+  publishedAt: string;
+  targetType: string;
+  targetName: string;
+  direction: string;
+  opinion: string;
+  verificationDate: string;
+  verifiedAt: string;
+  verdict: string | null;
+  score: number | null;
+  reason: string;
+}
+
+export interface CreatorOpinionAnalysis {
+  creatorId: string;
+  creatorName: string;
+  accuracyScore: number | null;
+  verifiedOpinions: VerifiedCreatorOpinion[];
+  pendingOpinions: VerifiedCreatorOpinion[];
+}
+
+export interface CreatorWorkFilters {
+  creatorId?: string;
+  platform?: string;
+  keyword?: string;
+  startTime?: string;
+  endTime?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CreatorWorkResponse {
+  items: CreatorWorkSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface NewsItem {
   id: string;
   title: string;
@@ -581,6 +774,178 @@ export interface MappedStockProjectRanking {
   newsCount: number;
   sentiment: Sentiment;
   date: string;
+}
+
+function creatorWorkStatus(value: RawCreatorWork['status']): string {
+  if (value && typeof value === 'object') return toText(value.status);
+  return toText(value);
+}
+
+export function mapCreatorAccount(raw: RawCreatorAccount): CreatorAccount {
+  return {
+    rank: toNumber(raw.rank, 0),
+    creatorId: toText(raw.creator_id),
+    displayName: toText(raw.display_name, toText(raw.creator_id, '未知博主')),
+    platform: toText(raw.platform, 'unknown'),
+    accountKey: toText(raw.account_key),
+    platformAccountId: toText(raw.platform_account_id),
+    handle: toText(raw.handle),
+    alias: toText(raw.alias),
+    homepageUrl: toText(raw.homepage_url),
+    enabled: raw.enabled === true,
+    verificationStatus: toText(raw.verification_status, 'unknown'),
+    notes: toText(raw.notes),
+  };
+}
+
+export function mapCreatorOpinion(raw: RawCreatorOpinion): CreatorOpinion {
+  return {
+    opinionId: toText(raw.opinion_id),
+    workKey: toText(raw.work_key),
+    marketScope: toText(raw.market_scope),
+    targetType: toText(raw.target_type, 'unknown'),
+    targetId: toText(raw.target_id) || null,
+    targetName: toText(raw.target_name, '未指定标的'),
+    direction: toText(raw.direction, 'unknown'),
+    stanceScore: toNullableNumber(raw.stance_score),
+    claim: toText(raw.claim || raw.opinion),
+    horizon: toText(raw.horizon),
+    validFrom: toText(raw.valid_from),
+    validUntil: toText(raw.valid_until),
+    metric: toText(raw.metric),
+    conditions: toStringArray(raw.conditions),
+    confidence: toNullableNumber(raw.confidence),
+    verifiable: typeof raw.verifiable === 'boolean' ? raw.verifiable : null,
+    sourceQuote: toText(raw.source_quote),
+    verificationDate: toText(raw.verification_date),
+  };
+}
+
+function mapVerifiedCreatorOpinion(raw: RawVerifiedCreatorOpinion): VerifiedCreatorOpinion {
+  return {
+    opinionId: toText(raw.opinion_id),
+    workKey: toText(raw.work_key),
+    platform: toText(raw.platform, 'unknown'),
+    publishedAt: toText(raw.published_at_beijing),
+    targetType: toText(raw.target_type, 'unknown'),
+    targetName: toText(raw.target_name, '未指定标的'),
+    direction: toText(raw.direction, 'unknown'),
+    opinion: toText(raw.opinion),
+    verificationDate: toText(raw.verification_date),
+    verifiedAt: toText(raw.verified_at_beijing),
+    verdict: toText(raw.verdict) || null,
+    score: toNullableNumber(raw.score),
+    reason: toText(raw.reason),
+  };
+}
+
+export function mapCreatorWorkSummary(raw: RawCreatorWork): CreatorWorkSummary {
+  const opinions = (raw.a_share_opinions ?? []).map(mapCreatorOpinion);
+  return {
+    workKey: toText(raw.work_key),
+    creatorId: toText(raw.creator_id),
+    creatorName: toText(raw.creator_name, toText(raw.creator_id, '未知博主')),
+    accountId: toText(raw.account_id),
+    platform: toText(raw.platform, 'unknown'),
+    title: toText(raw.title, opinions[0]?.claim || '未命名作品'),
+    contentType: toText(raw.content_type, 'unknown'),
+    publishedAt: toText(raw.published_at_beijing || raw.published_at),
+    canonicalUrl: toText(raw.canonical_url),
+    status: creatorWorkStatus(raw.status),
+    isAShareRelevant: raw.is_a_share_relevant === true,
+    opinions,
+  };
+}
+
+export function mapCreatorWorkDetail(raw: RawCreatorWork): CreatorWorkDetail {
+  return {
+    ...mapCreatorWorkSummary(raw),
+    summary: toText(raw.analysis?.summary),
+    analysisModel: toText(raw.analysis?.analysis_model),
+    analyzedAt: toText(raw.analysis?.analyzed_at),
+    sourceText: toText(raw.source_text),
+    extractedText: toText(raw.extracted_text),
+    asrText: toText(raw.asr_text),
+    ocrText: toText(raw.ocr_text),
+    mediaUrl: toText(raw.media_url),
+    durationMs: toNullableNumber(raw.duration_ms),
+  };
+}
+
+export function mapCreatorOpinionAnalysis(
+  raw: RawCreatorOpinionAnalysis,
+): CreatorOpinionAnalysis {
+  return {
+    creatorId: toText(raw.creator_id),
+    creatorName: toText(raw.creator_name, toText(raw.creator_id, '未知博主')),
+    accuracyScore: toNullableNumber(raw.accuracy_score),
+    verifiedOpinions: (raw.verified_opinions ?? []).map(mapVerifiedCreatorOpinion),
+    pendingOpinions: (raw.pending_opinions ?? []).map(mapVerifiedCreatorOpinion),
+  };
+}
+
+export async function getCreatorAccounts(): Promise<CreatorAccount[]> {
+  const response = await requestJson<PagedResponse<RawCreatorAccount>>(
+    '/api/v1/creator-accounts',
+  );
+  return (response.items ?? []).map(mapCreatorAccount);
+}
+
+export async function getCreatorWorks(
+  filters: CreatorWorkFilters = {},
+): Promise<CreatorWorkResponse> {
+  const page = Math.max(1, filters.page ?? 1);
+  const pageSize = Math.max(1, filters.pageSize ?? 24);
+  const response = await requestJson<PagedResponse<RawCreatorWork>>(
+    '/api/v1/creator-works',
+    {
+      creator_id: filters.creatorId,
+      platform: filters.platform,
+      keyword: filters.keyword,
+      start_time: filters.startTime,
+      end_time: filters.endTime,
+      page,
+      page_size: pageSize,
+      is_a_share_relevant: true,
+      status: 'finished',
+    },
+  );
+
+  return {
+    items: (response.items ?? []).map(mapCreatorWorkSummary),
+    total: toNumber(response.total, 0),
+    page: toNumber(response.page, page),
+    pageSize: toNumber(response.page_size, pageSize),
+  };
+}
+
+export async function getCreatorWorkDetail(workKey: string): Promise<CreatorWorkDetail> {
+  const response = await requestJson<DetailResponse<RawCreatorWork>>(
+    '/api/v1/creator-works/' + encodeURIComponent(workKey),
+  );
+  return mapCreatorWorkDetail(response.data ?? {});
+}
+
+export async function getCreatorOpinionAnalyses(): Promise<CreatorOpinionAnalysis[]> {
+  const response = await requestJson<PagedResponse<RawCreatorOpinionAnalysis>>(
+    '/api/v1/creator-opinion-analyses',
+    { page: 1, page_size: 200 },
+  );
+  return (response.items ?? []).map(mapCreatorOpinionAnalysis);
+}
+
+export async function getCreatorOpinionAnalysis(
+  creatorId: string,
+): Promise<CreatorOpinionAnalysis | null> {
+  try {
+    const response = await requestJson<DetailResponse<RawCreatorOpinionAnalysis>>(
+      '/api/v1/creator-opinion-analyses/' + encodeURIComponent(creatorId),
+    );
+    return response.data ? mapCreatorOpinionAnalysis(response.data) : null;
+  } catch (error) {
+    if (error instanceof Error && /接口请求失败:\s*404\b/.test(error.message)) return null;
+    throw error;
+  }
 }
 
 export function mapStockProjectNews(raw: RawStockProjectNews, index = 0): NewsItem {
