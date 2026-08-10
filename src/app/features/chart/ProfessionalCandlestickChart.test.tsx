@@ -3,7 +3,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { SectorStock } from '../../lib/api';
+import type { RealtimeStockQuote, SectorStock } from '../../lib/api';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -149,6 +149,22 @@ const nextNavigationStock: SectorStock = {
   name: '东山精密',
 };
 
+const realtimeQuote: RealtimeStockQuote = {
+  code: '600000',
+  name: '浦发银行',
+  market: 'SH',
+  tradeDate: '2026-08-10',
+  interval: '1m',
+  timestamp: '2026-08-10T01:31:00Z',
+  open: 10.7,
+  high: 10.9,
+  low: 10.65,
+  close: 10.88,
+  volume: 1000,
+  amount: 10880,
+  provider: 'TENCENT',
+};
+
 afterEach(() => {
   document.body.innerHTML = '';
   chartHarness.createChart.mockClear();
@@ -157,6 +173,39 @@ afterEach(() => {
 });
 
 describe('ProfessionalCandlestickChart interactions', () => {
+  it('uses realtime close on the latest bar and restores historical price under the crosshair', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        realtimeQuote={realtimeQuote}
+        realtimeMarketStatus="open"
+      />,
+    ));
+
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.88');
+    expect(host.textContent).toContain('实时 1m 09:31:00');
+    expect(host.textContent).toContain('日线涨跌 +8.00%');
+
+    const move = chartHarness.getCrosshairMove();
+    if (!move) throw new Error('Crosshair handler was not registered');
+    await act(async () => move({
+      time: '2026-08-07',
+      seriesData: new Map([[chartHarness.series[0], {
+        open: 9.8, high: 10.4, low: 9.5, close: 10,
+      }]]),
+    }));
+
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.00');
+    expect(host.querySelector('.stock-live-state')?.textContent).toContain('历史 K 线');
+    expect(host.querySelector('.stock-live-state')?.textContent).not.toContain('实时 1m');
+
+    await act(async () => root.unmount());
+  });
+
   it('resets a manually navigated chart to the latest 60 trading days when switching stocks', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);

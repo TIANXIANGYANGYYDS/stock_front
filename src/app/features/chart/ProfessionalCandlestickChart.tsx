@@ -21,7 +21,8 @@ import {
   Plus,
   RotateCcw,
 } from 'lucide-react';
-import type { SectorStock, StockKlineBar } from '../../lib/api';
+import type { RealtimeStockQuote, SectorStock, StockKlineBar } from '../../lib/api';
+import { formatShanghaiTime, marketStatusLabel } from '../../lib/realtime-format';
 import {
   buildIndicatorData,
   buildMovingAverageData,
@@ -42,6 +43,10 @@ import {
 interface ProfessionalCandlestickChartProps {
   stock: SectorStock | null;
   loading?: boolean;
+  realtimeQuote?: RealtimeStockQuote | null;
+  realtimeLoading?: boolean;
+  realtimeDelayed?: boolean;
+  realtimeMarketStatus?: string;
   onActiveDateChange?: (date: string | null) => void;
 }
 
@@ -149,6 +154,10 @@ function sameIndicators(
 export function ProfessionalCandlestickChart({
   stock,
   loading = false,
+  realtimeQuote = null,
+  realtimeLoading = false,
+  realtimeDelayed = false,
+  realtimeMarketStatus = '',
   onActiveDateChange,
 }: ProfessionalCandlestickChartProps) {
   const shellRef = useRef<HTMLDivElement>(null);
@@ -479,6 +488,21 @@ export function ProfessionalCandlestickChart({
 
   const legend = toLegend(activeBar ?? bars.at(-1));
   const isUp = (legend?.changePercent ?? stock?.changePercent ?? 0) >= 0;
+  const latestBar = bars.at(-1) ?? null;
+  const showingLatestBar = Boolean(latestBar && activeBar?.time === latestBar.time);
+  const hasRealtimePrice = showingLatestBar
+    && typeof realtimeQuote?.close === 'number'
+    && Number.isFinite(realtimeQuote.close);
+  const displayedPrice = hasRealtimePrice ? realtimeQuote.close : legend?.close ?? stock?.close;
+  const realtimeState = !showingLatestBar
+    ? '历史 K 线'
+    : hasRealtimePrice
+      ? `实时 ${realtimeQuote.interval} ${formatShanghaiTime(realtimeQuote.timestamp)}`
+      : realtimeLoading
+        ? '实时行情加载中'
+        : realtimeDelayed
+          ? '实时数据可能延迟'
+          : '暂无实时行情';
   const activeValidIndicators = activeIndicators
     .filter((indicator) => availableIndicators.includes(indicator));
   const chartCanvasHeight = Math.max(
@@ -523,12 +547,18 @@ export function ProfessionalCandlestickChart({
             )}
           </div>
           <div className="stock-price-row">
-            <span className={isUp ? 'market-rise' : 'market-fall'}>{formatPrice(legend?.close ?? stock?.close)}</span>
+            <span className={isUp ? 'market-rise' : 'market-fall'}>{formatPrice(displayedPrice)}</span>
             <small className={isUp ? 'market-rise' : 'market-fall'}>
               {legend?.changePercent === null || legend?.changePercent === undefined
                 ? '--'
-                : `${legend.changePercent > 0 ? '+' : ''}${legend.changePercent.toFixed(2)}%`}
+                : `日线涨跌 ${legend.changePercent > 0 ? '+' : ''}${legend.changePercent.toFixed(2)}%`}
             </small>
+          </div>
+          <div className={`stock-live-state${realtimeDelayed ? ' is-delayed' : ''}`}>
+            {realtimeState}
+            {showingLatestBar && realtimeMarketStatus
+              ? ` · ${marketStatusLabel(realtimeMarketStatus)}`
+              : ''}
           </div>
         </div>
         <div className="chart-periods" aria-label="图表窗口">
