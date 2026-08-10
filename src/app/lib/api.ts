@@ -11,6 +11,20 @@ type QueryValue = string | number | boolean | null | undefined;
 export type NewsWindowDays = 1 | 3 | 7;
 export type RankingWindow = 'hour' | 'day' | '3day' | '7day';
 
+interface RequestOptions {
+  signal?: AbortSignal;
+}
+
+export class ApiRequestError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
+}
+
 function buildQuery(params?: Record<string, QueryValue>): string {
   if (!params) return '';
   const searchParams = new URLSearchParams();
@@ -25,9 +39,11 @@ function buildQuery(params?: Record<string, QueryValue>): string {
 async function requestJson<T>(
   path: string,
   params?: Record<string, QueryValue>,
+  options: RequestOptions = {},
 ): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}${buildQuery(params)}`, {
     headers: { Accept: 'application/json' },
+    signal: options.signal,
   });
 
   if (!response.ok) {
@@ -38,7 +54,10 @@ async function requestJson<T>(
     } catch {
       detail = '';
     }
-    throw new Error(`接口请求失败: ${response.status}${detail ? ` · ${detail}` : ''}`);
+    throw new ApiRequestError(
+      response.status,
+      `接口请求失败: ${response.status}${detail ? ` · ${detail}` : ''}`,
+    );
   }
 
   return (await response.json()) as T;
@@ -389,6 +408,61 @@ interface RawMorningAnalysis {
   };
 }
 
+export interface RawRealtimeMarketIndex {
+  symbol?: unknown;
+  name?: unknown;
+  market?: unknown;
+  price?: unknown;
+  previous_close?: unknown;
+  change?: unknown;
+  change_pct?: unknown;
+  open?: unknown;
+  high?: unknown;
+  low?: unknown;
+  volume?: unknown;
+  amount?: unknown;
+  source_time?: unknown;
+  received_at?: unknown;
+  status?: unknown;
+  provider?: unknown;
+}
+
+interface RawRealtimeMarketIndicesData {
+  trading_date?: unknown;
+  market_status?: unknown;
+  updated_at?: unknown;
+  cache_age_ms?: unknown;
+  items?: RawRealtimeMarketIndex[] | null;
+}
+
+export interface RawRealtimeStockQuote {
+  code?: unknown;
+  name?: unknown;
+  market?: unknown;
+  trade_date?: unknown;
+  interval?: unknown;
+  timestamp?: unknown;
+  open?: unknown;
+  high?: unknown;
+  low?: unknown;
+  close?: unknown;
+  volume?: unknown;
+  amount?: unknown;
+  provider?: unknown;
+}
+
+interface RawRealtimeStocksData {
+  trading_date?: unknown;
+  market_status?: unknown;
+  interval?: unknown;
+  items?: RawRealtimeStockQuote[] | null;
+  missing_codes?: unknown;
+}
+
+interface RealtimeDataResponse<T> {
+  data?: T | null;
+}
+
 export interface RawCreatorAccount {
   rank?: number;
   creator_id?: string;
@@ -646,6 +720,57 @@ export interface MarketOverviewResponse {
   newsCount: number;
 }
 
+export interface MarketIndexQuote {
+  symbol: string;
+  name: string;
+  market: string;
+  price: number | null;
+  previousClose: number | null;
+  change: number | null;
+  changePercent: number | null;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  volume: number | null;
+  amount: number | null;
+  sourceTime: string;
+  receivedAt: string;
+  status: string;
+  provider: string;
+}
+
+export interface RealtimeMarketIndicesResponse {
+  tradingDate: string;
+  marketStatus: string;
+  updatedAt: string;
+  cacheAgeMs: number | null;
+  items: MarketIndexQuote[];
+}
+
+export interface RealtimeStockQuote {
+  code: string;
+  name: string;
+  market: string;
+  tradeDate: string;
+  interval: string;
+  timestamp: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  volume: number | null;
+  amount: number | null;
+  provider: string;
+}
+
+export interface RealtimeStocksResponse {
+  tradingDate: string;
+  marketStatus: string;
+  interval: string;
+  items: RealtimeStockQuote[];
+  missingCodes: string[];
+}
+
 export interface StockListItem {
   code: string;
   name: string;
@@ -774,6 +899,108 @@ export interface MappedStockProjectRanking {
   newsCount: number;
   sentiment: Sentiment;
   date: string;
+}
+
+export function mapRealtimeMarketIndex(
+  raw: RawRealtimeMarketIndex,
+): MarketIndexQuote {
+  return {
+    symbol: toText(raw.symbol),
+    name: toText(raw.name, toText(raw.symbol, '未知指数')),
+    market: toText(raw.market),
+    price: toNullableNumber(raw.price),
+    previousClose: toNullableNumber(raw.previous_close),
+    change: toNullableNumber(raw.change),
+    changePercent: toNullableNumber(raw.change_pct),
+    open: toNullableNumber(raw.open),
+    high: toNullableNumber(raw.high),
+    low: toNullableNumber(raw.low),
+    volume: toNullableNumber(raw.volume),
+    amount: toNullableNumber(raw.amount),
+    sourceTime: toText(raw.source_time),
+    receivedAt: toText(raw.received_at),
+    status: toText(raw.status, 'unknown'),
+    provider: toText(raw.provider, 'unknown'),
+  };
+}
+
+export function mapRealtimeStockQuote(
+  raw: RawRealtimeStockQuote,
+): RealtimeStockQuote {
+  return {
+    code: toText(raw.code),
+    name: toText(raw.name, toText(raw.code, '未知股票')),
+    market: toText(raw.market),
+    tradeDate: toText(raw.trade_date),
+    interval: toText(raw.interval, '1m'),
+    timestamp: toText(raw.timestamp),
+    open: toNullableNumber(raw.open),
+    high: toNullableNumber(raw.high),
+    low: toNullableNumber(raw.low),
+    close: toNullableNumber(raw.close),
+    volume: toNullableNumber(raw.volume),
+    amount: toNullableNumber(raw.amount),
+    provider: toText(raw.provider, 'unknown'),
+  };
+}
+
+export async function getRealtimeMarketIndices(
+  signal?: AbortSignal,
+): Promise<RealtimeMarketIndicesResponse> {
+  const response = await requestJson<RealtimeDataResponse<RawRealtimeMarketIndicesData>>(
+    '/api/v1/market/indices/realtime',
+    undefined,
+    { signal },
+  );
+  const data = response.data ?? {};
+  return {
+    tradingDate: toText(data.trading_date),
+    marketStatus: toText(data.market_status, 'unknown'),
+    updatedAt: toText(data.updated_at),
+    cacheAgeMs: toNullableNumber(data.cache_age_ms),
+    items: (data.items ?? []).map(mapRealtimeMarketIndex),
+  };
+}
+
+export async function getRealtimeStocks(
+  codes: string[],
+  interval = '1m',
+  signal?: AbortSignal,
+): Promise<RealtimeStocksResponse> {
+  const normalizedCodes = [...new Set(codes.map((code) => code.trim()).filter(Boolean))];
+  const response = await requestJson<RealtimeDataResponse<RawRealtimeStocksData>>(
+    '/api/v1/stocks/realtime',
+    { codes: normalizedCodes.join(','), interval },
+    { signal },
+  );
+  const data = response.data ?? {};
+  return {
+    tradingDate: toText(data.trading_date),
+    marketStatus: toText(data.market_status, 'unknown'),
+    interval: toText(data.interval, interval),
+    items: (data.items ?? []).map(mapRealtimeStockQuote),
+    missingCodes: toStringArray(data.missing_codes),
+  };
+}
+
+export async function getRealtimeStock(
+  code: string,
+  interval = '1m',
+  signal?: AbortSignal,
+): Promise<RealtimeStocksResponse> {
+  const response = await requestJson<RealtimeDataResponse<RawRealtimeStocksData>>(
+    `/api/v1/stocks/${encodeURIComponent(code.trim())}/realtime`,
+    { interval },
+    { signal },
+  );
+  const data = response.data ?? {};
+  return {
+    tradingDate: toText(data.trading_date),
+    marketStatus: toText(data.market_status, 'unknown'),
+    interval: toText(data.interval, interval),
+    items: (data.items ?? []).map(mapRealtimeStockQuote),
+    missingCodes: toStringArray(data.missing_codes),
+  };
 }
 
 function creatorWorkStatus(value: RawCreatorWork['status']): string {
