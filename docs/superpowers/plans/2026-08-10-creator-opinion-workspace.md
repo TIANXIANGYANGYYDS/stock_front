@@ -484,7 +484,7 @@ Expected: all orchestration and error-isolation tests PASS.
 
 - [ ] **Step 1: Write failing navigation and App tests**
 
-Extend TerminalHeader.test.tsx to assert “博主观点” is a button and clicking it calls onViewChange('creators'). Update the mocked TerminalHeader in App.test.tsx to expose a button that invokes onViewChange('creators'), mock CreatorInsightsView, click, and assert it mounts.
+Extend TerminalHeader.test.tsx to assert “博主观点” is a button and clicking it calls onViewChange('creators'). Update the mocked TerminalHeader in App.test.tsx to expose a button that invokes onViewChange('creators'), mock CreatorInsightsView, click, and assert it mounts even while the latest-trade-date request is pending or failed.
 
     it('opens the creator workspace from the fourth navigation item', async () => {
       const onViewChange = vi.fn();
@@ -501,7 +501,7 @@ Expected: FAIL because creators is not a WorkspaceView and no navigation item ex
 
 - [ ] **Step 3: Wire the fourth workspace**
 
-Add UsersRound or MessagesSquare to TerminalHeader. Extend WorkspaceView to 'decision' | 'market' | 'news' | 'creators'. Import CreatorInsightsView in App and render it for activeView === 'creators' after the existing date gate. Do not pass tradeDate because creator content is realtime.
+Add UsersRound or MessagesSquare to TerminalHeader. Extend WorkspaceView to 'decision' | 'market' | 'news' | 'creators'. Import CreatorInsightsView in App and render it whenever activeView === 'creators', before applying the latest-trade-date loading/error gate. Apply the date gate only when activeView is not creators. Do not pass tradeDate because creator content is realtime.
 
 - [ ] **Step 4: Add desktop, tablet and mobile CSS**
 
