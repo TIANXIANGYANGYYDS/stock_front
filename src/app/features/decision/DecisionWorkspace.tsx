@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   getStockDetail,
   getStockList,
   type SectorStock,
   type StockListItem,
 } from '../../lib/api';
+import { mergeRealtimeStockItems } from '../../lib/realtime-format';
+import { useRealtimeStock, useRealtimeStocks } from '../../hooks/useRealtimeQuotes';
 import { ProfessionalCandlestickChart } from '../chart/ProfessionalCandlestickChart';
 import { DecisionPanel } from './DecisionPanel';
 import { StockNavigator } from './StockNavigator';
@@ -30,6 +32,15 @@ export function DecisionWorkspace({
   const [detailLoading, setDetailLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const batchRealtime = useRealtimeStocks(stockItems.map((item) => item.code));
+  const selectedRealtime = useRealtimeStock(selectedStockCode);
+  const displayedStockItems = useMemo(
+    () => mergeRealtimeStockItems(stockItems, batchRealtime.data?.items ?? []),
+    [batchRealtime.data?.items, stockItems],
+  );
+  const realtimeQuote = selectedRealtime.data?.items.find(
+    (item) => item.code === selectedStockCode,
+  ) ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -94,7 +105,7 @@ export function DecisionWorkspace({
   return (
     <main className="decision-grid">
       <StockNavigator
-        items={stockItems}
+        items={displayedStockItems}
         query={query}
         selectedCode={selectedStockCode}
         loading={listLoading}
@@ -105,12 +116,20 @@ export function DecisionWorkspace({
       <ProfessionalCandlestickChart
         stock={selectedStock}
         loading={detailLoading}
+        realtimeQuote={realtimeQuote}
+        realtimeLoading={selectedRealtime.initialLoading}
+        realtimeDelayed={selectedRealtime.delayed}
+        realtimeMarketStatus={selectedRealtime.marketStatus}
         onActiveDateChange={setActiveDate}
       />
       <DecisionPanel
         stock={selectedStock}
         bar={selectSnapshotBar(selectedStock, activeDate)}
         loading={detailLoading}
+        realtimeQuote={realtimeQuote}
+        realtimeLoading={selectedRealtime.initialLoading}
+        realtimeDelayed={selectedRealtime.delayed}
+        realtimeMarketStatus={selectedRealtime.marketStatus}
       />
       {detailError && <div className="workspace-floating-error">{detailError}</div>}
     </main>
