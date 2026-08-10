@@ -93,6 +93,40 @@ describe('TerminalHeader market index strip', () => {
     await act(async () => root.unmount());
   });
 
+  it('keeps all successful index quotes visible as the last quote after market close', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <TerminalHeader
+        activeView="decision"
+        tradeDate="2026-08-07"
+        realtimeIndices={{ ...realtimeIndices, marketStatus: 'closed' }}
+        indicesLoading={false}
+        indicesDelayed={false}
+        indicesError={null}
+        onViewChange={vi.fn()}
+      />,
+    ));
+
+    const tickers = [...host.querySelectorAll('.index-ticker')];
+    expect(tickers).toHaveLength(5);
+    expect(tickers.map((item) => item.textContent)).toEqual([
+      expect.stringContaining('3966.59'),
+      expect.stringContaining('12450.00'),
+      expect.stringContaining('2800.00'),
+      expect.stringContaining('1050.00'),
+      expect.stringContaining('4620.00'),
+    ]);
+    expect(host.textContent).toContain('已闭市');
+    expect(host.textContent).toContain('最后行情');
+    expect(host.textContent).toContain('更新 09:30:05');
+    expect(host.querySelector('.market-session small')?.className).not.toContain('is-delayed');
+
+    await act(async () => root.unmount());
+  });
+
   it('keeps stale values visible while marking closed and delayed states', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -112,7 +146,31 @@ describe('TerminalHeader market index strip', () => {
 
     expect(host.textContent).toContain('已闭市');
     expect(host.textContent).toContain('数据可能延迟');
+    expect(host.textContent).toContain('最后行情');
     expect(host.textContent).toContain('3966.59');
+
+    await act(async () => root.unmount());
+  });
+
+  it('shows unavailable without claiming a last quote when the initial index request fails', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <TerminalHeader
+        activeView="decision"
+        tradeDate="2026-08-07"
+        realtimeIndices={null}
+        indicesLoading={false}
+        indicesDelayed={false}
+        indicesError="网络请求失败"
+        onViewChange={vi.fn()}
+      />,
+    ));
+
+    expect(host.textContent).toContain('行情暂不可用');
+    expect(host.textContent).not.toContain('最后行情');
 
     await act(async () => root.unmount());
   });

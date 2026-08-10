@@ -52,6 +52,13 @@ export function TerminalHeader({
   const orderedIndices = orderMarketIndices(realtimeIndices?.items ?? []);
   const hasRealtimeData = (realtimeIndices?.items.length ?? 0) > 0;
   const updatedTime = formatShanghaiTime(realtimeIndices?.updatedAt ?? '');
+  const indexSummary = indicesError && !hasRealtimeData
+    ? '行情暂不可用'
+    : hasRealtimeData
+      ? `${indicesDelayed || indicesError ? '数据可能延迟 · ' : ''}${realtimeIndices?.marketStatus === 'closed' ? '最后行情 · ' : ''}更新 ${updatedTime}`
+      : realtimeIndices
+        ? `更新 ${updatedTime}`
+        : '等待指数行情';
   const navigation: Array<{ id: WorkspaceView; label: string; icon: typeof Activity }> = [
     { id: 'decision', label: '决策工作台', icon: CandlestickChart },
     { id: 'market', label: '市场洞察', icon: BarChart3 },
@@ -106,13 +113,7 @@ export function TerminalHeader({
           </span>
           <strong>{realtimeIndices?.tradingDate || tradeDate || '--'}</strong>
           <small className={indicesDelayed || indicesError ? 'is-delayed' : ''}>
-            {indicesDelayed && hasRealtimeData
-              ? `数据可能延迟 · 更新 ${updatedTime}`
-              : indicesError && !hasRealtimeData
-                ? '行情暂不可用'
-                : realtimeIndices
-                  ? `更新 ${updatedTime}`
-                  : '等待指数行情'}
+            {indexSummary}
           </small>
         </div>
         <div className="index-ticker-list terminal-scroll-x">
