@@ -28,6 +28,40 @@ const SHANGHAI_TIME_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
   hour12: false,
 });
 
+const SHANGHAI_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+function formatShanghaiDate(date: Date): string {
+  const parts = Object.fromEntries(
+    SHANGHAI_DATE_FORMATTER
+      .formatToParts(date)
+      .filter((part) => part.type === 'year' || part.type === 'month' || part.type === 'day')
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function isValidIntradayQuote(item: RealtimeStockQuote): boolean {
+  return typeof item.open === 'number'
+    && Number.isFinite(item.open)
+    && typeof item.high === 'number'
+    && Number.isFinite(item.high)
+    && typeof item.low === 'number'
+    && Number.isFinite(item.low)
+    && typeof item.close === 'number'
+    && Number.isFinite(item.close);
+}
+
+function isValidTradingDate(value: string | undefined): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 export function formatShanghaiTime(value: string): string {
   if (!value) return '--:--:--';
   const date = new Date(value);
@@ -89,4 +123,36 @@ export function mergeRealtimeStockItems(
         : item.amount,
     };
   });
+}
+
+export function selectIntradayQuotes(
+  items: RealtimeStockQuote[],
+  code: string,
+  tradingDate?: string,
+): RealtimeStockQuote[] {
+  const validQuotes = items
+    .filter((item) => item.code === code && isValidIntradayQuote(item))
+    .flatMap((item) => {
+      const timestamp = new Date(item.timestamp).getTime();
+      return Number.isFinite(timestamp) ? [{ item, timestamp }] : [];
+    });
+  const latestTimestamp = validQuotes.reduce<number | null>(
+    (latest, quote) => latest === null || quote.timestamp > latest ? quote.timestamp : latest,
+    null,
+  );
+  const targetDate = isValidTradingDate(tradingDate)
+    ? tradingDate
+    : latestTimestamp === null ? null : formatShanghaiDate(new Date(latestTimestamp));
+
+  if (!targetDate) return [];
+
+  const quotesByTimestamp = new Map<number, RealtimeStockQuote>();
+  for (const quote of validQuotes) {
+    if (formatShanghaiDate(new Date(quote.timestamp)) === targetDate) {
+      quotesByTimestamp.set(quote.timestamp, quote.item);
+    }
+  }
+  return [...quotesByTimestamp.entries()]
+    .sort(([firstTimestamp], [secondTimestamp]) => firstTimestamp - secondTimestamp)
+    .map(([, quote]) => quote);
 }

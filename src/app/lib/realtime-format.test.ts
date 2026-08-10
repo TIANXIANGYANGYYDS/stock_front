@@ -6,6 +6,7 @@ import {
   mergeRealtimeStockItems,
   orderMarketIndices,
   quoteTone,
+  selectIntradayQuotes,
 } from './realtime-format';
 
 function indexQuote(symbol: string, name: string): MarketIndexQuote {
@@ -44,6 +45,28 @@ function stockQuote(code: string, close: number | null, amount: number | null): 
     volume: 100,
     amount,
     provider: 'TENCENT',
+  };
+}
+
+function intradayQuote(
+  timestamp: string,
+  overrides: Partial<RealtimeStockQuote> = {},
+): RealtimeStockQuote {
+  return {
+    code: '600519',
+    name: '贵州茅台',
+    market: 'SH',
+    tradeDate: '2026-08-10',
+    interval: '1m',
+    timestamp,
+    open: 10,
+    high: 11,
+    low: 9,
+    close: 10.5,
+    volume: 100,
+    amount: 1000,
+    provider: 'TENCENT',
+    ...overrides,
   };
 }
 
@@ -121,5 +144,67 @@ describe('batch realtime stock merging', () => {
 
     expect(mergeRealtimeStockItems(daily, [stockQuote('600519', null, null)]))
       .toEqual(daily);
+  });
+});
+
+describe('one-day intraday quote selection', () => {
+  it('keeps valid target-date quotes, uses the later duplicate, and sorts by timestamp', () => {
+    const duplicateEarlier = intradayQuote('2026-08-10T09:31:00+08:00', { close: 10.1 });
+    const duplicateLater = intradayQuote('2026-08-10T09:31:00+08:00', { close: 10.2 });
+    const laterQuote = intradayQuote('2026-08-10T09:35:00+08:00', { close: 10.3 });
+    const items = [
+      laterQuote,
+      intradayQuote('2026-08-10T09:32:00+08:00', { code: '000001' }),
+      intradayQuote('2026-08-10T09:33:00+08:00', { open: null }),
+      intradayQuote('2026-08-10T09:34:00+08:00', { high: Number.POSITIVE_INFINITY }),
+      intradayQuote('2026-08-10T09:36:00+08:00', { low: null }),
+      intradayQuote('2026-08-10T09:37:00+08:00', { close: null }),
+      intradayQuote('not-a-timestamp'),
+      intradayQuote('2026-08-09T14:59:00+08:00'),
+      duplicateEarlier,
+      duplicateLater,
+    ];
+
+    expect(selectIntradayQuotes(items, '600519', '2026-08-10')).toEqual([
+      duplicateLater,
+      laterQuote,
+    ]);
+    expect(items).toEqual([
+      laterQuote,
+      intradayQuote('2026-08-10T09:32:00+08:00', { code: '000001' }),
+      intradayQuote('2026-08-10T09:33:00+08:00', { open: null }),
+      intradayQuote('2026-08-10T09:34:00+08:00', { high: Number.POSITIVE_INFINITY }),
+      intradayQuote('2026-08-10T09:36:00+08:00', { low: null }),
+      intradayQuote('2026-08-10T09:37:00+08:00', { close: null }),
+      intradayQuote('not-a-timestamp'),
+      intradayQuote('2026-08-09T14:59:00+08:00'),
+      duplicateEarlier,
+      duplicateLater,
+    ]);
+  });
+
+  it('automatically uses the latest valid target-code Shanghai date', () => {
+    const priorDay = intradayQuote('2026-08-10T15:59:00Z');
+    const latestDay = intradayQuote('2026-08-10T16:01:00Z');
+
+    expect(selectIntradayQuotes([priorDay, latestDay], '600519')).toEqual([latestDay]);
+  });
+
+  it('falls back to the latest Shanghai date when the explicit date is invalid', () => {
+    const priorDay = intradayQuote('2026-08-10T15:59:00Z');
+    const latestDay = intradayQuote('2026-08-10T16:01:00Z');
+
+    expect(selectIntradayQuotes([priorDay, latestDay], '600519', 'not-a-date')).toEqual([
+      latestDay,
+    ]);
+    expect(selectIntradayQuotes([priorDay, latestDay], '600519', '2026-02-29')).toEqual([
+      latestDay,
+    ]);
+  });
+
+  it('returns its single valid quote when no trading date is supplied', () => {
+    const quote = intradayQuote('2026-08-10T09:31:00+08:00');
+
+    expect(selectIntradayQuotes([quote], '600519')).toEqual([quote]);
   });
 });
