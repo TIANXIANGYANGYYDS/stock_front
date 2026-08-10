@@ -1,6 +1,6 @@
 # 综合股票决策终端
 
-面向 A 股行情观察的三栏专业交易台，唯一数据源为 `Stock_Project`。顶部固定展示大盘指数身份，决策工作台用于检索个股和查看日线蜡烛图，市场洞察与实时资讯作为互不跳转的独立工作区。
+面向 A 股行情观察的专业交易台，唯一数据源为 `Stock_Project`。顶部固定展示大盘指数身份，决策工作台用于检索个股和查看日线蜡烛图，市场洞察、实时资讯与博主观点作为互不跳转的独立工作区。
 
 ## 主要能力
 
@@ -9,6 +9,7 @@
 - 行情快照：随十字光标交易日同步 OHLC、涨跌、成交、换手和全部可用技术指标；展示获利比例、平均成本、70%/90%成本区间及后端筹码 XY 分布图
 - 市场洞察：Stock_Project 盘前分析以详情弹窗阅读；投资倾向和新闻热力均支持 1 小时、1 天、3 天、7 天快照窗口
 - 新闻情报：支持当日、3 天、7 天范围，利好/利空过滤，以及按分数或时间正序/倒序排列
+- 博主观点：展示真实 A 股相关作品、结构化观点、原始内容和历史验证；准确率排行同时标注有效样本与待验证数量，空评分不会显示为 0 分
 
 ## 本地运行
 
@@ -33,7 +34,7 @@ npm run build
 VITE_API_PROXY_TARGET=http://39.106.202.228:8100
 ```
 
-全站唯一业务日期来自 `GET /api/v1/market/latest-trade-date` 的 `data.latest_trade_date`。该请求完成前不会挂载行情、排行、盘前分析或资讯查询；返回空值或请求失败时会停止后续日期请求并展示明确状态，不会使用 `/stats`、`latest` 路由或浏览器当天日历日期回退。
+行情工作区唯一业务日期来自 `GET /api/v1/market/latest-trade-date` 的 `data.latest_trade_date`。该请求完成前不会挂载行情、板块排行、盘前分析或资讯查询；返回空值或请求失败时会停止后续日期请求并展示明确状态，不会使用 `/stats`、`latest` 路由或浏览器当天日历日期回退。博主观点属于周末和收盘后仍会更新的实时内容，可独立进入，并按作品实际发布时间筛选，不受最新交易日截断。
 
 当前接入 `Stock_Project` 的只读接口：
 
@@ -45,6 +46,11 @@ VITE_API_PROXY_TARGET=http://39.106.202.228:8100
 - `GET /api/v1/stocks`
 - `GET /api/v1/stocks/{code}/daily`
 - `GET /api/v1/stock-daily/{trade_date}`
+- `GET /api/v1/creator-accounts`
+- `GET /api/v1/creator-works`
+- `GET /api/v1/creator-works/{work_key}`
+- `GET /api/v1/creator-opinion-analyses`
+- `GET /api/v1/creator-opinion-analyses/{creator_id}`
 
 `/stocks/{code}/daily` 返回的 OHLC、量均线、MA、MACD、BOLL、KDJ、RSI、CCI、WR、ATR 与筹码字段用于绘制蜡烛图、多副图和联动行情快照。筹码图直接使用同一交易日 `chip.chart.x/y`；前端不自行推导指标、不接入第三方行情、不补造样例数据，也不生成单股研判、推荐或交易价位。当前后端尚未提供大盘指数行情接口，因此顶部仅展示固定指数名称与代码，并明确标记“接口待接入”，不会用个股冒充指数。`Stock_Project` 后端可在其项目目录启动：
 
@@ -62,5 +68,6 @@ uvicorn app.api.app:create_app --factory --host 0.0.0.0 --port 8100
 - `src/app/features/decision`：个股检索、K 线与行情快照三栏工作台
 - `src/app/features/market`：市场洞察工作区
 - `src/app/features/news`：新闻情报工作区
+- `src/app/features/creators`：博主评分排行、观点流、详情与验证状态
 - `src/styles/terminal.css`：终端视觉系统与响应式布局
   

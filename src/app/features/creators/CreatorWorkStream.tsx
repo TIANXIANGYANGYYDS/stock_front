@@ -94,14 +94,21 @@ export function CreatorWorkStream({
 
       {!loading && items.length > 0 && (
         <div className="creator-work-list terminal-scroll">
-          {items.map((work) => (
-            <button
-              type="button"
-              key={work.workKey}
-              className={'creator-work-card ' + (selectedWorkKey === work.workKey ? 'is-active' : '')}
-              aria-pressed={selectedWorkKey === work.workKey}
-              onClick={() => onSelect(work.workKey)}
-            >
+          {items.map((work) => {
+            const verifiableCount = work.opinions.filter(
+              (opinion) => opinion.verifiable === true,
+            ).length;
+            const longTermCount = work.opinions.filter(
+              (opinion) => opinion.verifiable === false,
+            ).length;
+            return (
+              <button
+                type="button"
+                key={work.workKey}
+                className={'creator-work-card ' + (selectedWorkKey === work.workKey ? 'is-active' : '')}
+                aria-pressed={selectedWorkKey === work.workKey}
+                onClick={() => onSelect(work.workKey)}
+              >
               <span className="creator-work-meta">
                 <b>{work.creatorName}</b>
                 <em>{platformLabel(work.platform)}</em>
@@ -125,9 +132,12 @@ export function CreatorWorkStream({
                 })}
                 {work.opinions.length > 3 && <em>+{work.opinions.length - 3}</em>}
               </span>
-              <small className="creator-work-count">共 {work.opinions.length} 条观点</small>
-            </button>
-          ))}
+                <small className="creator-work-count">
+                  共 {work.opinions.length} 条观点 · 可验证 {verifiableCount} · 长期/不可量化 {longTermCount}
+                </small>
+              </button>
+            );
+          })}
           {hasMore && (
             <button
               type="button"

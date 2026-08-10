@@ -202,6 +202,7 @@ describe('CreatorWorkStream', () => {
     expect(host.textContent).toContain('看多');
     expect(host.textContent).toContain('商业航天');
     expect(host.textContent).toContain('共 1 条观点');
+    expect(host.textContent).toContain('可验证 1 · 长期/不可量化 0');
 
     await act(async () => button(host, '商业航天明日展望').click());
     await act(async () => button(host, '加载更多').click());
@@ -237,5 +238,34 @@ describe('CreatorWorkDetailPanel', () => {
     expect(external?.target).toBe('_blank');
     expect(external?.rel).toContain('noreferrer');
     expect(external?.rel).toContain('noopener');
+  });
+
+  it('keeps missing summaries honest and exposes unknown verification details', async () => {
+    const unknownAnalysis: CreatorOpinionAnalysis = {
+      ...creatorAnalysis,
+      verifiedOpinions: [{
+        ...creatorAnalysis.verifiedOpinions[0],
+        verdict: 'backend_new_verdict',
+      }],
+    };
+    const host = await render(
+      <CreatorWorkDetailPanel
+        work={{ ...workDetail, summary: '' }}
+        creatorAnalysis={unknownAnalysis}
+        loading={false}
+        error={null}
+        onRetry={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(host.querySelector('.creator-ai-summary p')?.textContent).toBe('暂无 AI 摘要');
+    expect(host.textContent).toContain('待识别状态 · backend_new_verdict');
+    expect(host.textContent).toContain('内容类型 post');
+    expect(host.textContent).toContain('有效期 2026-08-09 16:00 至 2026-08-10 15:00');
+    expect(button(host, '观点分析').getAttribute('aria-pressed')).toBe('true');
+
+    await act(async () => button(host, '原始内容').click());
+    expect(button(host, '原始内容').getAttribute('aria-pressed')).toBe('true');
   });
 });

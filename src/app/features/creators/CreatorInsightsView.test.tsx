@@ -32,6 +32,7 @@ afterEach(async () => {
   root = null;
   document.body.innerHTML = '';
   Object.values(apiMocks).forEach((mock) => mock.mockReset());
+  vi.unstubAllGlobals();
 });
 
 async function renderView(): Promise<HTMLElement> {
@@ -282,6 +283,62 @@ describe('CreatorInsightsView', () => {
     );
   });
 
+  it('ignores a stale load-more response after server filters change', async () => {
+    const firstWork = creatorWork('hero:work', 'hero', '旧筛选第一页');
+    const staleWork = creatorWork('hero:stale', 'hero', '旧筛选第二页');
+    const filteredWork = creatorWork('new:work', 'new', '新筛选结果', 'bearish');
+    let resolveStale: ((value: {
+      items: CreatorWorkSummary[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }) => void) | undefined;
+    const stalePage = new Promise<{
+      items: CreatorWorkSummary[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }>((resolve) => {
+      resolveStale = resolve;
+    });
+    apiMocks.getCreatorAccounts.mockResolvedValue([
+      creatorAccount('hero', '天津股侠'),
+      creatorAccount('new', '数据新人'),
+    ]);
+    apiMocks.getCreatorOpinionAnalyses.mockResolvedValue([
+      creatorAnalysis('hero', '天津股侠', 74.46),
+      creatorAnalysis('new', '数据新人', null),
+    ]);
+    apiMocks.getCreatorWorks.mockImplementation(async (filters: { creatorId?: string; page?: number }) => {
+      if (filters.creatorId === 'new') {
+        return { items: [filteredWork], total: 1, page: 1, pageSize: 24 };
+      }
+      if (filters.page === 2) return stalePage;
+      return { items: [firstWork], total: 2, page: 1, pageSize: 24 };
+    });
+    apiMocks.getCreatorWorkDetail.mockImplementation(async (workKey: string) => {
+      const matches = [firstWork, staleWork, filteredWork];
+      return detailOf(matches.find((item) => item.workKey === workKey) ?? firstWork);
+    });
+
+    const host = await renderView();
+    await act(async () => clickButton(host, '加载更多'));
+    await act(async () => clickButton(host, '数据新人'));
+    await flush();
+
+    expect(host.textContent).toContain('新筛选结果');
+    await act(async () => resolveStale?.({
+      items: [staleWork],
+      total: 2,
+      page: 2,
+      pageSize: 24,
+    }));
+    await flush();
+
+    expect(host.textContent).toContain('新筛选结果');
+    expect(host.textContent).not.toContain('旧筛选第二页');
+  });
+
   it('reuses a cached detail when returning to an already opened work', async () => {
     const firstWork = creatorWork('hero:work', 'hero', '第一条观点');
     const secondWork = creatorWork('new:work', 'new', '第二条观点', 'bearish');
@@ -295,5 +352,60 @@ describe('CreatorInsightsView', () => {
 
     expect(apiMocks.getCreatorWorkDetail).toHaveBeenCalledTimes(2);
     expect(host.textContent).toContain('第一条观点的 AI 摘要');
+  });
+
+  it('keeps using detail caches after a failed detail has been retried', async () => {
+    const firstWork = creatorWork('hero:work', 'hero', '重试观点');
+    const secondWork = creatorWork('new:work', 'new', '切换观点', 'bearish');
+    prepareSuccessfulInitialLoad([firstWork, secondWork]);
+    apiMocks.getCreatorWorkDetail
+      .mockRejectedValueOnce(new Error('详情暂时不可用'))
+      .mockImplementation(async (workKey: string) =>
+        detailOf(workKey === firstWork.workKey ? firstWork : secondWork));
+    const host = await renderView();
+
+    expect(host.textContent).toContain('详情暂时不可用');
+    await act(async () => clickButton(host, '重新加载详情'));
+    await flush();
+    await act(async () => clickButton(host, '切换观点'));
+    await flush();
+    await act(async () => clickButton(host, '重试观点'));
+    await flush();
+
+    expect(apiMocks.getCreatorWorkDetail).toHaveBeenCalledTimes(3);
+    expect(host.textContent).toContain('重试观点的 AI 摘要');
+  });
+
+  it('keeps the responsive detail drawer closed until the user selects a work', async () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+      matches: false,
+      media: '(min-width: 1281px)',
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    const firstWork = creatorWork('hero:work', 'hero', '窄屏观点');
+    prepareSuccessfulInitialLoad([firstWork]);
+    const host = await renderView();
+    const workButton = [...host.querySelectorAll('button')].find(
+      (item) => item.textContent?.includes('窄屏观点'),
+    ) as HTMLButtonElement;
+
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+
+    workButton.focus();
+    await act(async () => workButton.click());
+    await flush();
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    await flush();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(workButton);
   });
 });

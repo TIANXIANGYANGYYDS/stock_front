@@ -40,4 +40,32 @@ describe('TerminalHeader market index strip', () => {
 
     await act(async () => root.unmount());
   });
+
+  it('exposes a fourth creator workspace navigation action', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onViewChange = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <TerminalHeader
+          activeView="decision"
+          tradeDate="2026-08-07"
+          marketLoading={false}
+          marketError={null}
+          onViewChange={onViewChange}
+        />,
+      );
+    });
+
+    const creatorButton = [...host.querySelectorAll('button')].find(
+      (item) => item.textContent?.includes('博主观点'),
+    );
+    expect(creatorButton).toBeTruthy();
+    await act(async () => creatorButton?.click());
+    expect(onViewChange).toHaveBeenCalledWith('creators');
+
+    await act(async () => root.unmount());
+  });
 });

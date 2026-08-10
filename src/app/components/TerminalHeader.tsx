@@ -2,6 +2,7 @@ import {
   Activity,
   BarChart3,
   CandlestickChart,
+  MessageSquareQuote,
   Newspaper,
   Radio,
   Search,
@@ -9,7 +10,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-export type WorkspaceView = 'decision' | 'market' | 'news';
+export type WorkspaceView = 'decision' | 'market' | 'news' | 'creators';
 
 interface TerminalHeaderProps {
   activeView: WorkspaceView;
@@ -40,6 +41,7 @@ export function TerminalHeader({
     { id: 'decision', label: '决策工作台', icon: CandlestickChart },
     { id: 'market', label: '市场洞察', icon: BarChart3 },
     { id: 'news', label: '实时资讯', icon: Newspaper },
+    { id: 'creators', label: '博主观点', icon: MessageSquareQuote },
   ];
 
   return (

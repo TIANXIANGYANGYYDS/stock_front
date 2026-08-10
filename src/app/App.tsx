@@ -3,6 +3,7 @@ import { TerminalHeader, type WorkspaceView } from './components/TerminalHeader'
 import { DecisionWorkspace } from './features/decision/DecisionWorkspace';
 import { MarketInsightsView } from './features/market/MarketInsightsView';
 import { NewsIntelligenceView } from './features/news/NewsIntelligenceView';
+import { CreatorInsightsView } from './features/creators/CreatorInsightsView';
 import {
   getLatestTradeDate,
 } from './lib/api';
@@ -51,27 +52,28 @@ export default function App() {
       />
 
       <div className="terminal-main">
-        {tradeDateLoading && (
+        {activeView === 'creators' && <CreatorInsightsView />}
+        {activeView !== 'creators' && tradeDateLoading && (
           <main className="workspace-date-gate terminal-panel">
             <div className="terminal-empty"><span className="loading-pulse" />正在解析 Stock_Project 最新交易日...</div>
           </main>
         )}
-        {!tradeDateLoading && !tradeDate && (
+        {activeView !== 'creators' && !tradeDateLoading && !tradeDate && (
           <main className="workspace-date-gate terminal-panel">
             <div className={`terminal-empty${tradeDateError ? ' is-error' : ''}`}>
               {tradeDateError || 'Stock_Project 未返回最新交易日'}
             </div>
           </main>
         )}
-        {!tradeDateLoading && tradeDate && activeView === 'decision' && (
+        {activeView !== 'creators' && !tradeDateLoading && tradeDate && activeView === 'decision' && (
           <DecisionWorkspace
             preferredTradeDate={tradeDate}
           />
         )}
-        {!tradeDateLoading && tradeDate && activeView === 'market' && (
+        {activeView !== 'creators' && !tradeDateLoading && tradeDate && activeView === 'market' && (
           <MarketInsightsView preferredTradeDate={tradeDate} />
         )}
-        {!tradeDateLoading && tradeDate && activeView === 'news' && (
+        {activeView !== 'creators' && !tradeDateLoading && tradeDate && activeView === 'news' && (
           <NewsIntelligenceView tradeDate={tradeDate} />
         )}
       </div>

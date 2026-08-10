@@ -18,8 +18,17 @@ vi.mock('./lib/api', () => ({
 }));
 
 vi.mock('./components/TerminalHeader', () => ({
-  TerminalHeader: ({ marketError }: { marketError: string | null }) => (
-    <header>terminal header {marketError}</header>
+  TerminalHeader: ({
+    marketError,
+    onViewChange,
+  }: {
+    marketError: string | null;
+    onViewChange: (view: string) => void;
+  }) => (
+    <header>
+      terminal header {marketError}
+      <button type="button" onClick={() => onViewChange('creators')}>博主观点</button>
+    </header>
   ),
 }));
 
@@ -35,6 +44,10 @@ vi.mock('./features/market/MarketInsightsView', () => ({
 
 vi.mock('./features/news/NewsIntelligenceView', () => ({
   NewsIntelligenceView: () => <main>news intelligence</main>,
+}));
+
+vi.mock('./features/creators/CreatorInsightsView', () => ({
+  CreatorInsightsView: () => <main data-testid="creator-insights">creator insights</main>,
 }));
 
 import App from './App';
@@ -99,6 +112,26 @@ describe('App latest trading date gate', () => {
 
     expect(host.textContent).toContain('最新交易日加载失败：接口请求失败: 503');
     expect(host.querySelector('[data-testid="decision-workspace"]')).toBeNull();
+
+    await act(async () => root.unmount());
+  });
+
+  it('opens realtime creator intelligence without waiting for the trading date gate', async () => {
+    apiMocks.getLatestTradeDate.mockReturnValue(new Promise(() => undefined));
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<App />));
+
+    const creatorButton = [...host.querySelectorAll('button')].find(
+      (item) => item.textContent?.includes('博主观点'),
+    );
+    if (!creatorButton) throw new Error('Missing creator workspace button');
+    await act(async () => creatorButton.click());
+
+    expect(host.querySelector('[data-testid="creator-insights"]')).not.toBeNull();
+    expect(host.textContent).not.toContain('正在解析 Stock_Project 最新交易日');
 
     await act(async () => root.unmount());
   });

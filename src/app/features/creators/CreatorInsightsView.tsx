@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import {
   Database,
   ListChecks,
@@ -85,12 +86,27 @@ export function CreatorInsightsView() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailReload, setDetailReload] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [inlineDetail, setInlineDetail] = useState(() => (
+    typeof window.matchMedia !== 'function'
+      || window.matchMedia('(min-width: 1281px)').matches
+  ));
   const detailCache = useRef(new Map<string, CreatorWorkDetail>());
+  const worksRequestGeneration = useRef(0);
+  const detailTrigger = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 180);
     return () => window.clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const query = window.matchMedia('(min-width: 1281px)');
+    const updateLayout = () => setInlineDetail(query.matches);
+    updateLayout();
+    query.addEventListener?.('change', updateLayout);
+    return () => query.removeEventListener?.('change', updateLayout);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,14 +163,16 @@ export function CreatorInsightsView() {
 
   useEffect(() => {
     let cancelled = false;
+    const requestGeneration = ++worksRequestGeneration.current;
     setWorksLoading(true);
+    setWorksLoadingMore(false);
     setWorksError(null);
     setSelectedWorkKey('');
     setDetail(null);
 
     void getCreatorWorks(currentWorkFilters(1))
       .then((response) => {
-        if (cancelled) return;
+        if (cancelled || requestGeneration !== worksRequestGeneration.current) return;
         setWorks(response.items);
         setWorksTotal(response.total);
         setPage(1);
@@ -165,13 +183,15 @@ export function CreatorInsightsView() {
         if (isUnfiltered) setAllWorksTotal(response.total);
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (cancelled || requestGeneration !== worksRequestGeneration.current) return;
         setWorks([]);
         setWorksTotal(0);
         setWorksError(errorText(error, '博主观点加载失败'));
       })
       .finally(() => {
-        if (!cancelled) setWorksLoading(false);
+        if (!cancelled && requestGeneration === worksRequestGeneration.current) {
+          setWorksLoading(false);
+        }
       });
 
     return () => {
@@ -203,9 +223,9 @@ export function CreatorInsightsView() {
     }
     if (!visibleWorks.some((work) => work.workKey === selectedWorkKey)) {
       setSelectedWorkKey(visibleWorks[0].workKey);
-      setDetailOpen(true);
+      setDetailOpen(inlineDetail);
     }
-  }, [selectedWorkKey, visibleWorks]);
+  }, [inlineDetail, selectedWorkKey, visibleWorks]);
 
   useEffect(() => {
     if (!selectedWorkKey) {
@@ -215,7 +235,7 @@ export function CreatorInsightsView() {
       return;
     }
     const cached = detailCache.current.get(selectedWorkKey);
-    if (cached && detailReload === 0) {
+    if (cached) {
       setDetail(cached);
       setDetailLoading(false);
       setDetailError(null);
@@ -262,6 +282,9 @@ export function CreatorInsightsView() {
   };
 
   const handleWorkSelect = (workKey: string) => {
+    detailTrigger.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
     setSelectedWorkKey(workKey);
     setDetailOpen(true);
   };
@@ -269,16 +292,21 @@ export function CreatorInsightsView() {
   const handleLoadMore = async () => {
     if (worksLoadingMore || !hasMore) return;
     const nextPage = page + 1;
+    const requestGeneration = worksRequestGeneration.current;
     setWorksLoadingMore(true);
     try {
       const response = await getCreatorWorks(currentWorkFilters(nextPage));
+      if (requestGeneration !== worksRequestGeneration.current) return;
       setWorks((current) => appendUniqueWorks(current, response.items));
       setWorksTotal(response.total);
       setPage(nextPage);
     } catch (error: unknown) {
+      if (requestGeneration !== worksRequestGeneration.current) return;
       setWorksError(errorText(error, '更多观点加载失败'));
     } finally {
-      setWorksLoadingMore(false);
+      if (requestGeneration === worksRequestGeneration.current) {
+        setWorksLoadingMore(false);
+      }
     }
   };
 
@@ -290,6 +318,20 @@ export function CreatorInsightsView() {
     setDirection('all');
     setSelectedCreatorId('');
   };
+
+  const detailPanel = (
+    <CreatorWorkDetailPanel
+      work={detail}
+      creatorAnalysis={selectedAnalysis}
+      loading={detailLoading}
+      error={detailError}
+      onRetry={() => {
+        if (selectedWorkKey) detailCache.current.delete(selectedWorkKey);
+        setDetailReload((value) => value + 1);
+      }}
+      onClose={() => setDetailOpen(false)}
+    />
+  );
 
   return (
     <main className="creator-insights-view">
@@ -410,19 +452,30 @@ export function CreatorInsightsView() {
           onClearFilters={clearFilters}
           onRetry={() => setWorksReload((value) => value + 1)}
         />
-        <div className={'creator-detail-shell ' + (detailOpen ? 'is-open' : '')}>
-          <CreatorWorkDetailPanel
-            work={detail}
-            creatorAnalysis={selectedAnalysis}
-            loading={detailLoading}
-            error={detailError}
-            onRetry={() => {
-              if (selectedWorkKey) detailCache.current.delete(selectedWorkKey);
-              setDetailReload((value) => value + 1);
-            }}
-            onClose={() => setDetailOpen(false)}
-          />
-        </div>
+        {inlineDetail ? (
+          <div className="creator-detail-shell is-open">{detailPanel}</div>
+        ) : (
+          <DialogPrimitive.Root open={detailOpen} onOpenChange={setDetailOpen}>
+            <DialogPrimitive.Portal>
+              <DialogPrimitive.Overlay className="creator-detail-overlay" />
+              <DialogPrimitive.Content
+                className="creator-detail-shell is-open"
+                onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  detailTrigger.current?.focus();
+                }}
+              >
+                <DialogPrimitive.Title className="sr-only">
+                  作品与观点详情
+                </DialogPrimitive.Title>
+                <DialogPrimitive.Description className="sr-only">
+                  查看所选博主作品的观点分析、验证结果与原始内容
+                </DialogPrimitive.Description>
+                {detailPanel}
+              </DialogPrimitive.Content>
+            </DialogPrimitive.Portal>
+          </DialogPrimitive.Root>
+        )}
       </div>
     </main>
   );

@@ -51,6 +51,10 @@ function scoreLabel(score: number | null): string {
   return (score > 0 ? '+' : '') + score;
 }
 
+function dateTimeLabel(value: string): string {
+  return value ? value.replace('T', ' ').slice(0, 16) : '未提供';
+}
+
 export function CreatorWorkDetailPanel({
   work,
   creatorAnalysis,
@@ -99,6 +103,7 @@ export function CreatorWorkDetailPanel({
             <h2>{work.title}</h2>
             <div>
               <time><Clock3 size={11} />{work.publishedAt.replace('T', ' ').slice(0, 16)}</time>
+              <span>内容类型 {work.contentType || '未知'}</span>
               {work.canonicalUrl && (
                 <a href={work.canonicalUrl} target="_blank" rel="noreferrer noopener">
                   查看原始内容<ExternalLink size={11} />
@@ -107,11 +112,10 @@ export function CreatorWorkDetailPanel({
             </div>
           </div>
 
-          <div className="creator-detail-tabs" role="tablist" aria-label="详情内容">
+          <div className="creator-detail-tabs" aria-label="详情内容">
             <button
               type="button"
-              role="tab"
-              aria-selected={tab === 'analysis'}
+              aria-pressed={tab === 'analysis'}
               className={tab === 'analysis' ? 'is-active' : ''}
               onClick={() => setTab('analysis')}
             >
@@ -119,8 +123,7 @@ export function CreatorWorkDetailPanel({
             </button>
             <button
               type="button"
-              role="tab"
-              aria-selected={tab === 'source'}
+              aria-pressed={tab === 'source'}
               className={tab === 'source' ? 'is-active' : ''}
               onClick={() => setTab('source')}
             >
@@ -132,7 +135,7 @@ export function CreatorWorkDetailPanel({
             <div className="creator-detail-scroll terminal-scroll">
               <section className="creator-ai-summary">
                 <h3><Sparkles size={13} />AI 内容摘要</h3>
-                <p>{work.summary || work.opinions[0]?.claim || '暂无摘要'}</p>
+                <p>{work.summary || '暂无 AI 摘要'}</p>
                 <small>AI 提取仅用于信息整理，不构成投资建议</small>
               </section>
 
@@ -143,6 +146,9 @@ export function CreatorWorkDetailPanel({
                   const verificationState = opinion.verifiable === false
                     ? { label: '长期/不可量化观点', tone: 'muted' as const }
                     : verificationPresentation(verification?.verdict ?? pending?.verdict ?? null);
+                  const rawVerification = 'raw' in verificationState
+                    ? verificationState.raw
+                    : '';
                   const strength = opinion.stanceScore === null
                     ? ''
                     : (opinion.stanceScore > 0 ? '+' : '') + opinion.stanceScore;
@@ -156,6 +162,7 @@ export function CreatorWorkDetailPanel({
                         <span className={'creator-verification-pill is-' + verificationState.tone}>
                           <VerificationIcon tone={verificationState.tone} />
                           {verificationState.label}
+                          {rawVerification && ' · ' + rawVerification}
                           {verification && scoreLabel(verification.score) && ' ' + scoreLabel(verification.score)}
                         </span>
                       </header>
@@ -165,6 +172,9 @@ export function CreatorWorkDetailPanel({
                         {strength && <span>立场 {strength}</span>}
                         {opinion.confidence !== null && <span>置信度 {(opinion.confidence * 100).toFixed(0)}%</span>}
                         {opinion.horizon && <span>周期 {opinion.horizon}</span>}
+                        <span>
+                          有效期 {dateTimeLabel(opinion.validFrom)} 至 {dateTimeLabel(opinion.validUntil)}
+                        </span>
                         {opinion.verificationDate && <span>验证日 {opinion.verificationDate}</span>}
                       </div>
                       {opinion.conditions.length > 0 && (
