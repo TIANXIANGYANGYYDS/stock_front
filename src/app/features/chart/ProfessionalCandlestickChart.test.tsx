@@ -3,18 +3,30 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { RealtimeStockQuote, SectorStock } from '../../lib/api';
+import type {
+  RealtimeStockQuote,
+  RealtimeStocksResponse,
+  SectorStock,
+} from '../../lib/api';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
 
 const chartHarness = vi.hoisted(() => {
+  const candlestickSeries = Symbol('CandlestickSeries');
+  const histogramSeries = Symbol('HistogramSeries');
+  const lineSeries = Symbol('LineSeries');
   const remove = vi.fn();
   const removeSeries = vi.fn();
   const series: Array<{
+    definition: symbol;
     setData: ReturnType<typeof vi.fn>;
     applyOptions: ReturnType<typeof vi.fn>;
     moveToPane: ReturnType<typeof vi.fn>;
+  }> = [];
+  const charts: Array<{
+    addSeries: ReturnType<typeof vi.fn>;
+    subscribeCrosshairMove: ReturnType<typeof vi.fn>;
   }> = [];
   const panes = Array.from({ length: 8 }, () => ({
     setHeight: vi.fn(),
@@ -29,26 +41,36 @@ const chartHarness = vi.hoisted(() => {
     }),
     fitContent: vi.fn(),
   };
-  const createChart = vi.fn(() => ({
-    addSeries: vi.fn(() => {
-      const api = {
-        setData: vi.fn(),
-        applyOptions: vi.fn(),
-        createPriceLine: vi.fn(),
-        moveToPane: vi.fn(),
-      };
-      series.push(api);
-      return api;
-    }),
-    removeSeries,
-    panes: vi.fn(() => panes),
-    subscribeCrosshairMove: vi.fn((handler) => { crosshairMove = handler; }),
-    unsubscribeCrosshairMove: vi.fn(),
-    timeScale: vi.fn(() => timeScale),
-    remove,
-  }));
+  const createChart = vi.fn(() => {
+    const chart = {
+      addSeries: vi.fn((definition: symbol) => {
+        const api = {
+          definition,
+          setData: vi.fn(),
+          applyOptions: vi.fn(),
+          createPriceLine: vi.fn(),
+          moveToPane: vi.fn(),
+        };
+        series.push(api);
+        return api;
+      }),
+      removeSeries,
+      panes: vi.fn(() => panes),
+      subscribeCrosshairMove: vi.fn((handler) => { crosshairMove = handler; }),
+      unsubscribeCrosshairMove: vi.fn(),
+      timeScale: vi.fn(() => timeScale),
+      remove,
+    };
+    charts.push(chart);
+    return chart;
+  });
   return {
+    candlestickSeries,
+    histogramSeries,
+    lineSeries,
+    charts,
     createChart,
+    timeScale,
     remove,
     removeSeries,
     panes,
@@ -57,6 +79,7 @@ const chartHarness = vi.hoisted(() => {
     getVisibleRange: () => visibleRange,
     setVisibleRange: (range: { from: number; to: number }) => { visibleRange = range; },
     reset: () => {
+      charts.length = 0;
       series.length = 0;
       crosshairMove = null;
       visibleRange = { from: 70, to: 100 };
@@ -73,12 +96,12 @@ const chartHarness = vi.hoisted(() => {
 });
 
 vi.mock('lightweight-charts', () => ({
-  CandlestickSeries: Symbol('CandlestickSeries'),
+  CandlestickSeries: chartHarness.candlestickSeries,
   ColorType: { Solid: 'Solid' },
   createChart: chartHarness.createChart,
   CrosshairMode: { Normal: 0 },
-  HistogramSeries: Symbol('HistogramSeries'),
-  LineSeries: Symbol('LineSeries'),
+  HistogramSeries: chartHarness.histogramSeries,
+  LineSeries: chartHarness.lineSeries,
   LineStyle: { Solid: 0, Dotted: 1, Dashed: 2 },
 }));
 
@@ -165,6 +188,34 @@ const realtimeQuote: RealtimeStockQuote = {
   provider: 'TENCENT',
 };
 
+const earlierIntradayQuote: RealtimeStockQuote = {
+  ...realtimeQuote,
+  timestamp: '2026-08-10T01:31:00Z',
+  open: 10.7,
+  high: 10.84,
+  low: 10.68,
+  close: 10.8,
+  volume: 1_000,
+};
+
+const latestIntradayQuote: RealtimeStockQuote = {
+  ...realtimeQuote,
+  timestamp: '2026-08-10T01:32:00Z',
+  open: 10.8,
+  high: 10.95,
+  low: 10.78,
+  close: 10.92,
+  volume: null,
+};
+
+const intradayResponse: RealtimeStocksResponse = {
+  tradingDate: '2026-08-10',
+  marketStatus: 'open',
+  interval: '1m',
+  items: [latestIntradayQuote, earlierIntradayQuote],
+  missingCodes: [],
+};
+
 afterEach(() => {
   document.body.innerHTML = '';
   chartHarness.createChart.mockClear();
@@ -173,7 +224,7 @@ afterEach(() => {
 });
 
 describe('ProfessionalCandlestickChart interactions', () => {
-  it('uses realtime close on the latest bar and restores historical price under the crosshair', async () => {
+  it('defaults to daily mode without legacy range controls or realtime price overwrite', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -186,27 +237,167 @@ describe('ProfessionalCandlestickChart interactions', () => {
       />,
     ));
 
-    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.88');
-    expect(host.textContent).toContain('实时 1m 09:31:00');
+    const dailyButton = [...host.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === '日线');
+    expect(dailyButton?.className).toContain('is-active');
+    expect(dailyButton?.getAttribute('aria-pressed')).toBe('true');
+    expect(host.textContent).not.toContain('近10日');
+    expect(host.textContent).not.toContain('近20日');
+    expect(host.textContent).not.toContain('近30日');
+    expect(host.textContent).not.toContain('近60日');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.80');
+    expect(host.textContent).not.toContain('实时 1m');
     expect(host.textContent).toContain('日线涨跌 +8.00%');
-
-    const move = chartHarness.getCrosshairMove();
-    if (!move) throw new Error('Crosshair handler was not registered');
-    await act(async () => move({
-      time: '2026-08-07',
-      seriesData: new Map([[chartHarness.series[0], {
-        open: 9.8, high: 10.4, low: 9.5, close: 10,
-      }]]),
-    }));
-
-    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.00');
-    expect(host.querySelector('.stock-live-state')?.textContent).toContain('历史 K 线');
-    expect(host.querySelector('.stock-live-state')?.textContent).not.toContain('实时 1m');
 
     await act(async () => root.unmount());
   });
 
-  it('resets a manually navigated chart to the latest 60 trading days when switching stocks', async () => {
+  it('renders sorted minute candles and finite volume without reporting a minute date', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onActiveDateChange = vi.fn();
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        intradayData={intradayResponse}
+        onActiveDateChange={onActiveDateChange}
+      />,
+    ));
+    onActiveDateChange.mockClear();
+
+    const minuteButton = [...host.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === '分钟线');
+    if (!minuteButton) throw new Error('Missing minute mode button');
+    await act(async () => minuteButton.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+
+    expect(onActiveDateChange).toHaveBeenCalledTimes(1);
+    expect(onActiveDateChange).toHaveBeenCalledWith(null);
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.92');
+    expect(host.textContent).toContain('分钟线 1m 09:32:00');
+    expect(host.textContent).not.toContain('日线涨跌');
+
+    const minuteChart = chartHarness.charts[1];
+    expect(minuteChart.addSeries.mock.calls.map((call) => call[0])).toEqual([
+      chartHarness.candlestickSeries,
+      chartHarness.histogramSeries,
+    ]);
+    const candleSeries = minuteChart.addSeries.mock.results[0]?.value;
+    const volumeSeries = minuteChart.addSeries.mock.results[1]?.value;
+    expect(candleSeries.setData).toHaveBeenLastCalledWith([
+      { time: 1_786_325_460, open: 10.7, high: 10.84, low: 10.68, close: 10.8 },
+      { time: 1_786_325_520, open: 10.8, high: 10.95, low: 10.78, close: 10.92 },
+    ]);
+    expect(volumeSeries.setData).toHaveBeenLastCalledWith([
+      { time: 1_786_325_460, value: 1_000, color: expect.any(String) },
+    ]);
+    expect(minuteChart.subscribeCrosshairMove).not.toHaveBeenCalled();
+    expect(onActiveDateChange).not.toHaveBeenCalledWith(1_786_325_520);
+
+    await act(async () => root.unmount());
+  });
+
+  it('shows minute loading, empty, market, delayed, closed and one-candle states', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const render = async (
+      intradayData: RealtimeStocksResponse | null,
+      intradayLoading = false,
+      intradayDelayed = false,
+    ) => act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        intradayData={intradayData}
+        intradayLoading={intradayLoading}
+        intradayDelayed={intradayDelayed}
+      />,
+    ));
+
+    await render(null, true);
+    const minuteButton = [...host.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === '分钟线');
+    if (!minuteButton) throw new Error('Missing minute mode button');
+    await act(async () => minuteButton.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(host.textContent).toContain('分钟行情加载中');
+
+    await render({ ...intradayResponse, items: [] });
+    expect(host.textContent).toContain('暂无当日分钟行情');
+
+    const oneItemResponse = { ...intradayResponse, items: [earlierIntradayQuote] };
+    await render(oneItemResponse);
+    expect(host.textContent).toContain('交易中');
+    expect(host.textContent).toContain('当前仅有 1 根分钟 K 线');
+
+    await render(oneItemResponse, false, true);
+    expect(host.textContent).toContain('数据可能延迟');
+
+    await render({ ...oneItemResponse, marketStatus: 'closed' });
+    expect(host.textContent).toContain('已闭市 · 最后行情');
+
+    await act(async () => root.unmount());
+  });
+
+  it('replaces same-day minute data without creating another chart and restores daily controls', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart stock={stock} intradayData={intradayResponse} />,
+    ));
+    const modeButton = (label: string) => {
+      const button = [...host.querySelectorAll('button')]
+        .find((item) => item.textContent?.trim() === label);
+      if (!button) throw new Error(`Missing mode button: ${label}`);
+      return button;
+    };
+    await act(async () => modeButton('分钟线').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+
+    const minuteChart = chartHarness.charts[1];
+    const candleSeries = minuteChart.addSeries.mock.results[0]?.value;
+    expect(chartHarness.createChart).toHaveBeenCalledTimes(2);
+    expect(chartHarness.timeScale.fitContent).toHaveBeenCalledTimes(1);
+
+    const nextQuote: RealtimeStockQuote = {
+      ...latestIntradayQuote,
+      timestamp: '2026-08-10T01:33:00Z',
+      open: 10.92,
+      high: 11,
+      low: 10.9,
+      close: 10.98,
+      volume: 2_000,
+    };
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        intradayData={{ ...intradayResponse, items: [nextQuote, latestIntradayQuote, earlierIntradayQuote] }}
+      />,
+    ));
+
+    expect(chartHarness.createChart).toHaveBeenCalledTimes(2);
+    expect(chartHarness.timeScale.fitContent).toHaveBeenCalledTimes(1);
+    expect(candleSeries.setData).toHaveBeenLastCalledWith([
+      expect.objectContaining({ time: 1_786_325_460 }),
+      expect.objectContaining({ time: 1_786_325_520 }),
+      expect.objectContaining({ time: 1_786_325_580, close: 10.98 }),
+    ]);
+
+    await act(async () => modeButton('日线').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(modeButton('日线').className).toContain('is-active');
+    expect(host.textContent).toContain('MA');
+    expect(host.textContent).toContain('MACD');
+    expect(host.querySelectorAll('.chart-navigation-controls button')).toHaveLength(4);
+    expect(chartHarness.createChart).toHaveBeenCalledTimes(3);
+    expect(chartHarness.charts[2].addSeries.mock.calls.some(
+      (call) => typeof call[2] === 'number' && call[2] > 0,
+    )).toBe(true);
+
+    await act(async () => root.unmount());
+  });
+
+  it('resets a manually navigated daily chart to the latest 60 trading days when switching stocks', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -226,9 +417,9 @@ describe('ProfessionalCandlestickChart interactions', () => {
 
     expect(chartHarness.createChart).toHaveBeenCalledTimes(2);
     expect(chartHarness.getVisibleRange()).toEqual({ from: 0, to: 40.5 });
-    const sixtyDayButton = [...host.querySelectorAll('button')]
-      .find((button) => button.textContent?.trim() === '近60日');
-    expect(sixtyDayButton?.className).toContain('is-active');
+    const dailyButton = [...host.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === '日线');
+    expect(dailyButton?.className).toContain('is-active');
 
     await act(async () => root.unmount());
   });
@@ -324,7 +515,6 @@ describe('ProfessionalCandlestickChart interactions', () => {
     };
 
     await act(async () => {
-      button('近10日').dispatchEvent(new MouseEvent('click', { bubbles: true }));
       button('KDJ').dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 

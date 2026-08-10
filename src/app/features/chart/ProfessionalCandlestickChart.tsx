@@ -21,8 +21,12 @@ import {
   Plus,
   RotateCcw,
 } from 'lucide-react';
-import type { RealtimeStockQuote, SectorStock, StockKlineBar } from '../../lib/api';
-import { formatShanghaiTime, marketStatusLabel } from '../../lib/realtime-format';
+import type {
+  RealtimeStockQuote,
+  RealtimeStocksResponse,
+  SectorStock,
+} from '../../lib/api';
+import { formatShanghaiTime, selectIntradayQuotes } from '../../lib/realtime-format';
 import {
   buildIndicatorData,
   buildMovingAverageData,
@@ -39,6 +43,7 @@ import {
   navigateLogicalRange,
   type ChartNavigationAction,
 } from './chart-navigation';
+import { IntradayCandlestickChart } from './IntradayCandlestickChart';
 
 interface ProfessionalCandlestickChartProps {
   stock: SectorStock | null;
@@ -47,6 +52,9 @@ interface ProfessionalCandlestickChartProps {
   realtimeLoading?: boolean;
   realtimeDelayed?: boolean;
   realtimeMarketStatus?: string;
+  intradayData?: RealtimeStocksResponse | null;
+  intradayLoading?: boolean;
+  intradayDelayed?: boolean;
   onActiveDateChange?: (date: string | null) => void;
 }
 
@@ -60,6 +68,7 @@ interface OhlcLegend {
 }
 
 type ManagedSeries = ISeriesApi<'Line'> | ISeriesApi<'Histogram'>;
+type ChartMode = 'daily' | 'intraday';
 
 const RISE_COLOR = '#f06461';
 const FALL_COLOR = '#20b98b';
@@ -154,10 +163,9 @@ function sameIndicators(
 export function ProfessionalCandlestickChart({
   stock,
   loading = false,
-  realtimeQuote = null,
-  realtimeLoading = false,
-  realtimeDelayed = false,
-  realtimeMarketStatus = '',
+  intradayData = null,
+  intradayLoading = false,
+  intradayDelayed = false,
   onActiveDateChange,
 }: ProfessionalCandlestickChartProps) {
   const shellRef = useRef<HTMLDivElement>(null);
@@ -168,6 +176,14 @@ export function ProfessionalCandlestickChart({
   const auxiliarySeriesRef = useRef<Partial<Record<AuxiliaryChartIndicator, ManagedSeries[]>>>({});
   const onActiveDateChangeRef = useRef(onActiveDateChange);
   const bars = useMemo(() => normalizeChartBars(stock?.kline ?? []), [stock]);
+  const intradayQuotes = useMemo(
+    () => selectIntradayQuotes(
+      intradayData?.items ?? [],
+      stock?.code ?? '',
+      intradayData?.tradingDate,
+    ),
+    [intradayData, stock?.code],
+  );
   const availableMaKeys = useMemo(() => getAvailableMaKeys(bars), [bars]);
   const availableIndicators = useMemo(() => getAvailableChartIndicators(bars), [bars]);
   const bollAvailable = useMemo(
@@ -175,6 +191,7 @@ export function ProfessionalCandlestickChart({
     [bars],
   );
   const [activeBar, setActiveBar] = useState<ChartBar | null>(() => bars.at(-1) ?? null);
+  const [mode, setMode] = useState<ChartMode>('daily');
   const [windowSize, setWindowSize] = useState<ChartWindowSize | null>(DEFAULT_WINDOW_SIZE);
   const [showMovingAverages, setShowMovingAverages] = useState(true);
   const [showBoll, setShowBoll] = useState(false);
@@ -209,7 +226,7 @@ export function ProfessionalCandlestickChart({
 
   useEffect(() => {
     const container = chartContainerRef.current;
-    if (!container || bars.length === 0) return;
+    if (mode !== 'daily' || !container || bars.length === 0) return;
 
     const chart = createChart(container, {
       autoSize: true,
@@ -348,11 +365,11 @@ export function ProfessionalCandlestickChart({
       auxiliarySeriesRef.current = {};
       chart.remove();
     };
-  }, [bars]);
+  }, [bars, mode]);
 
   useEffect(() => {
     const chart = chartApiRef.current;
-    if (!chart || bars.length === 0) return;
+    if (mode !== 'daily' || !chart || bars.length === 0) return;
 
     Object.values(auxiliarySeriesRef.current).flat().forEach((series) => {
       try {
@@ -439,7 +456,7 @@ export function ProfessionalCandlestickChart({
     selected.forEach((_, index) => {
       panes[index + 1]?.setStretchFactor(1);
     });
-  }, [activeIndicators, availableIndicators, bars]);
+  }, [activeIndicators, availableIndicators, bars, mode]);
 
   useEffect(() => {
     movingAverageSeriesRef.current.forEach((series) => {
@@ -485,30 +502,39 @@ export function ProfessionalCandlestickChart({
       ? current.filter((item) => item !== indicator)
       : [...current, indicator]);
   };
+  const switchMode = (nextMode: ChartMode) => {
+    if (nextMode === mode) return;
+    setMode(nextMode);
+    setActiveBar(bars.at(-1) ?? null);
+    setWindowSize(DEFAULT_WINDOW_SIZE);
+    onActiveDateChangeRef.current?.(null);
+  };
 
   const legend = toLegend(activeBar ?? bars.at(-1));
-  const isUp = (legend?.changePercent ?? stock?.changePercent ?? 0) >= 0;
   const latestBar = bars.at(-1) ?? null;
   const showingLatestBar = Boolean(latestBar && activeBar?.time === latestBar.time);
-  const hasRealtimePrice = showingLatestBar
-    && typeof realtimeQuote?.close === 'number'
-    && Number.isFinite(realtimeQuote.close);
-  const displayedPrice = hasRealtimePrice ? realtimeQuote.close : legend?.close ?? stock?.close;
-  const realtimeState = !showingLatestBar
-    ? '历史 K 线'
-    : hasRealtimePrice
-      ? `实时 ${realtimeQuote.interval} ${formatShanghaiTime(realtimeQuote.timestamp)}`
-      : realtimeLoading
-        ? '实时行情加载中'
-        : realtimeDelayed
-          ? '实时数据可能延迟'
-          : '暂无实时行情';
+  const latestIntradayQuote = intradayQuotes.at(-1) ?? null;
+  const isIntradayMode = mode === 'intraday';
+  const isUp = isIntradayMode && latestIntradayQuote
+    ? (latestIntradayQuote.close as number) >= (latestIntradayQuote.open as number)
+    : (legend?.changePercent ?? stock?.changePercent ?? 0) >= 0;
+  const displayedPrice = isIntradayMode
+    ? latestIntradayQuote?.close
+    : legend?.close ?? stock?.close;
+  const minuteState = intradayQuotes.length === 0
+    ? intradayLoading ? '分钟行情加载中' : '暂无当日分钟行情'
+    : intradayDelayed
+      ? '数据可能延迟'
+      : intradayData?.marketStatus === 'closed'
+        ? '已闭市 · 最后行情'
+        : intradayData?.marketStatus === 'open'
+          ? '交易中'
+          : '状态未知';
   const activeValidIndicators = activeIndicators
     .filter((indicator) => availableIndicators.includes(indicator));
-  const chartCanvasHeight = Math.max(
-    430,
-    MAIN_PANE_HEIGHT + activeValidIndicators.length * AUXILIARY_PANE_HEIGHT,
-  );
+  const chartCanvasHeight = isIntradayMode
+    ? MAIN_PANE_HEIGHT + AUXILIARY_PANE_HEIGHT
+    : Math.max(430, MAIN_PANE_HEIGHT + activeValidIndicators.length * AUXILIARY_PANE_HEIGHT);
 
   const auxiliaryLegendValues = (indicator: AuxiliaryChartIndicator) => {
     const bar = activeBar;
@@ -542,35 +568,58 @@ export function ProfessionalCandlestickChart({
           <div className="stock-identity">
             <strong>{stock?.name || '等待选择股票'}</strong>
             <span>{stock?.code || '--'}</span>
-            {(legend?.time || stock?.tradeDate) && (
-              <span className="trade-date-chip">{legend?.time || stock?.tradeDate}</span>
+            {(isIntradayMode
+              ? intradayData?.tradingDate
+              : legend?.time || stock?.tradeDate) && (
+              <span className="trade-date-chip">
+                {isIntradayMode
+                  ? intradayData?.tradingDate
+                  : legend?.time || stock?.tradeDate}
+              </span>
             )}
           </div>
           <div className="stock-price-row">
             <span className={isUp ? 'market-rise' : 'market-fall'}>{formatPrice(displayedPrice)}</span>
-            <small className={isUp ? 'market-rise' : 'market-fall'}>
-              {legend?.changePercent === null || legend?.changePercent === undefined
-                ? '--'
-                : `日线涨跌 ${legend.changePercent > 0 ? '+' : ''}${legend.changePercent.toFixed(2)}%`}
-            </small>
+            {!isIntradayMode && (
+              <small className={isUp ? 'market-rise' : 'market-fall'}>
+                {legend?.changePercent === null || legend?.changePercent === undefined
+                  ? '--'
+                  : `日线涨跌 ${legend.changePercent > 0 ? '+' : ''}${legend.changePercent.toFixed(2)}%`}
+              </small>
+            )}
           </div>
-          <div className={`stock-live-state${realtimeDelayed ? ' is-delayed' : ''}`}>
-            {realtimeState}
-            {showingLatestBar && realtimeMarketStatus
-              ? ` · ${marketStatusLabel(realtimeMarketStatus)}`
-              : ''}
+          <div className={`stock-live-state${isIntradayMode && intradayDelayed ? ' is-delayed' : ''}`}>
+            {isIntradayMode
+              ? latestIntradayQuote
+                ? `分钟线 1m ${formatShanghaiTime(latestIntradayQuote.timestamp)} · ${minuteState}`
+                : minuteState
+              : showingLatestBar ? '日线 · 最新交易日' : '历史 K 线'}
+            {isIntradayMode && intradayQuotes.length === 1 && (
+              <span className="intraday-single-hint"> · 当前仅有 1 根分钟 K 线</span>
+            )}
           </div>
         </div>
-        <div className="chart-periods" aria-label="图表窗口">
-          {([10, 20, 30, 60] as const).map((size) => (
-            <button key={size} className={windowSize === size ? 'is-active' : ''} onClick={() => setWindowSize(size)}>
-              近{size}日
-            </button>
-          ))}
+        <div className="chart-periods" role="group" aria-label="主图周期">
+          <button
+            type="button"
+            aria-pressed={mode === 'daily'}
+            className={mode === 'daily' ? 'is-active' : ''}
+            onClick={() => switchMode('daily')}
+          >
+            日线
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === 'intraday'}
+            className={mode === 'intraday' ? 'is-active' : ''}
+            onClick={() => switchMode('intraday')}
+          >
+            分钟线
+          </button>
         </div>
         </div>
 
-        <div className="chart-toolbar">
+        {!isIntradayMode && <div className="chart-toolbar">
         <div className="ohlc-legend">
           <span>{legend?.time || '--'}</span>
           <span>开 <b>{formatPrice(legend?.open)}</b></span>
@@ -600,9 +649,9 @@ export function ProfessionalCandlestickChart({
           <button onClick={() => setWindowSize(DEFAULT_WINDOW_SIZE)} title="重置窗口" aria-label="重置窗口"><RotateCcw size={14} /></button>
           <button onClick={() => void toggleFullscreen()} title="全屏图表" aria-label="全屏图表"><Expand size={14} /></button>
         </div>
-        </div>
+        </div>}
 
-        <div className="indicator-legend-board" aria-label="当前指标图例">
+        {!isIntradayMode && <div className="indicator-legend-board" aria-label="当前指标图例">
         {showMovingAverages && (
           <div className="indicator-legend-row">
             <strong>MA</strong>
@@ -637,18 +686,31 @@ export function ProfessionalCandlestickChart({
             </div>
           );
         })}
-        </div>
+        </div>}
       </div>
 
       <div className="chart-canvas-shell" style={{ height: chartCanvasHeight }}>
-        {loading ? (
+        {isIntradayMode ? (
+          intradayQuotes.length > 0 ? (
+            <IntradayCandlestickChart
+              quotes={intradayQuotes}
+              stockCode={stock?.code ?? ''}
+              tradingDate={intradayData?.tradingDate}
+            />
+          ) : (
+            <div className="terminal-empty">
+              {intradayLoading && <span className="loading-pulse" />}
+              {minuteState}
+            </div>
+          )
+        ) : loading ? (
           <div className="terminal-empty"><span className="loading-pulse" />正在加载个股行情...</div>
         ) : bars.length === 0 ? (
           <div className="terminal-empty">请选择包含有效日 K 数据的股票</div>
         ) : (
           <div ref={chartContainerRef} className="chart-canvas" />
         )}
-        {!loading && bars.length > 0 && (
+        {!isIntradayMode && !loading && bars.length > 0 && (
           <div
             className="chart-navigation-controls"
             style={{ top: MAIN_PANE_HEIGHT - 56 }}

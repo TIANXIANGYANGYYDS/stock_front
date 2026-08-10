@@ -782,6 +782,10 @@ button {
   background: linear-gradient(90deg, rgba(29, 48, 69, 0.34), rgba(14, 24, 37, 0.08));
 }
 
+.stock-quote-head > div:first-child {
+  min-width: 0;
+}
+
 .stock-identity {
   display: flex;
   align-items: center;
@@ -824,14 +828,21 @@ button {
 }
 
 .stock-live-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
   margin-top: 5px;
   color: var(--terminal-accent);
   font-size: 9px;
-  white-space: nowrap;
+  line-height: 1.4;
 }
 
 .stock-live-state.is-delayed {
   color: var(--terminal-warning);
+}
+
+.intraday-single-hint {
+  color: var(--terminal-faint);
 }
 
 .chart-periods,
@@ -839,6 +850,10 @@ button {
   display: flex;
   align-items: center;
   gap: 3px;
+}
+
+.chart-periods {
+  flex: 0 0 auto;
 }
 
 .chart-tools {
@@ -2659,7 +2674,9 @@ button {
   .terminal-brand span { display: none; }
   .market-index-strip { padding: 0 10px; grid-template-columns: 140px minmax(650px, 1fr); }
   .terminal-main { padding: 7px; }
-  .stock-quote-head { align-items: flex-start; flex-direction: column; }
+  .stock-quote-head { align-items: stretch; flex-direction: column; gap: 9px; }
+  .chart-periods { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chart-periods button { width: 100%; }
   .ohlc-legend { max-width: 58vw; }
   .chart-toolbar { align-items: flex-start; flex-direction: column; padding: 7px 9px; }
   .market-insights-view,
