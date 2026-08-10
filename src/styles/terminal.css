@@ -1078,37 +1078,6 @@ button {
   box-shadow: 0 0 8px rgba(53, 201, 243, 0.7);
 }
 
-.realtime-stock-snapshot h3 {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.realtime-stock-snapshot h3 em {
-  margin-left: auto;
-  color: var(--terminal-accent);
-  font-size: 9px;
-  font-style: normal;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.realtime-stock-snapshot h3 em.is-delayed {
-  color: var(--terminal-warning);
-}
-
-.realtime-snapshot-grid {
-  margin-top: 9px;
-}
-
-.realtime-quote-time {
-  display: block;
-  margin-top: 8px;
-  color: var(--terminal-faint);
-  font-size: 9px;
-  overflow-wrap: anywhere;
-}
-
 .decision-stock-line {
   display: flex;
   align-items: center;

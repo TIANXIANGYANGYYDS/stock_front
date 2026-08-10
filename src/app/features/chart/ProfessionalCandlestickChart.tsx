@@ -22,7 +22,6 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import type {
-  RealtimeStockQuote,
   RealtimeStocksResponse,
   SectorStock,
 } from '../../lib/api';
@@ -48,10 +47,6 @@ import { IntradayCandlestickChart } from './IntradayCandlestickChart';
 interface ProfessionalCandlestickChartProps {
   stock: SectorStock | null;
   loading?: boolean;
-  realtimeQuote?: RealtimeStockQuote | null;
-  realtimeLoading?: boolean;
-  realtimeDelayed?: boolean;
-  realtimeMarketStatus?: string;
   intradayData?: RealtimeStocksResponse | null;
   intradayLoading?: boolean;
   intradayDelayed?: boolean;

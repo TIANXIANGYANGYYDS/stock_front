@@ -224,17 +224,13 @@ afterEach(() => {
 });
 
 describe('ProfessionalCandlestickChart interactions', () => {
-  it('defaults to daily mode without legacy range controls or realtime price overwrite', async () => {
+  it('defaults to daily mode without legacy range controls or minute price overwrite', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
 
     await act(async () => root.render(
-      <ProfessionalCandlestickChart
-        stock={stock}
-        realtimeQuote={realtimeQuote}
-        realtimeMarketStatus="open"
-      />,
+      <ProfessionalCandlestickChart stock={stock} />,
     ));
 
     const dailyButton = [...host.querySelectorAll('button')]

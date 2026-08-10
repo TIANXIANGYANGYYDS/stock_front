@@ -3,7 +3,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { RealtimeStockQuote, SectorStock, StockKlineBar } from '../../lib/api';
+import type { SectorStock, StockKlineBar } from '../../lib/api';
 import { DecisionPanel } from './DecisionPanel';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
@@ -43,61 +43,25 @@ const historicalBar: StockKlineBar = {
   },
 };
 
-const realtimeQuote: RealtimeStockQuote = {
-  code: '600000', name: '浦发银行', market: 'SH', tradeDate: '2026-08-10',
-  interval: '1m', timestamp: '2026-08-10T01:31:00Z', open: 14.6,
-  high: 14.9, low: 14.5, close: 14.86, volume: 1000,
-  amount: 14_860_000, provider: 'TENCENT',
-};
-
 afterEach(() => {
   document.body.innerHTML = '';
 });
 
 describe('DecisionPanel synchronized snapshot', () => {
-  it('shows a delayed realtime snapshot without replacing the daily snapshot', async () => {
+  it('keeps the sidebar as a daily snapshot without a realtime section', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
 
     await act(async () => root.render(
-      <DecisionPanel
-        stock={stock}
-        bar={historicalBar}
-        realtimeQuote={realtimeQuote}
-        realtimeDelayed
-        realtimeMarketStatus="open"
-      />,
+      <DecisionPanel stock={stock} bar={historicalBar} />,
     ));
 
-    const realtimeSection = host.querySelector('.realtime-stock-snapshot');
-    expect(realtimeSection?.textContent).toContain('实时行情 1m');
-    expect(realtimeSection?.textContent).toContain('当前价14.86');
-    expect(realtimeSection?.textContent).toContain('开盘14.60');
-    expect(realtimeSection?.textContent).toContain('最高14.90');
-    expect(realtimeSection?.textContent).toContain('最低14.50');
-    expect(realtimeSection?.textContent).toContain('09:31:00');
-    expect(realtimeSection?.textContent).toContain('数据可能延迟');
+    expect(host.querySelector('.realtime-stock-snapshot')).toBeNull();
     expect(host.textContent).toContain('日线行情');
     expect(host.textContent).toContain('收盘10.50');
-
-    await act(async () => root.unmount());
-  });
-
-  it('distinguishes realtime loading and empty states', async () => {
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    await act(async () => root.render(
-      <DecisionPanel stock={stock} bar={historicalBar} realtimeQuote={null} realtimeLoading />,
-    ));
-    expect(host.textContent).toContain('实时行情加载中');
-
-    await act(async () => root.render(
-      <DecisionPanel stock={stock} bar={historicalBar} realtimeQuote={null} realtimeLoading={false} />,
-    ));
-    expect(host.textContent).toContain('暂无实时行情');
+    expect(host.textContent).toContain('70%成本区间');
+    expect(host.textContent).toContain('KDJ');
 
     await act(async () => root.unmount());
   });

@@ -1,16 +1,11 @@
-import { Activity, BarChart3, Database, Gauge, Layers3, Radio, Waves } from 'lucide-react';
-import type { RealtimeStockQuote, SectorStock, StockKlineBar } from '../../lib/api';
-import { formatShanghaiTime, marketStatusLabel } from '../../lib/realtime-format';
+import { Activity, BarChart3, Database, Gauge, Layers3, Waves } from 'lucide-react';
+import type { SectorStock, StockKlineBar } from '../../lib/api';
 import { ChipDistributionChart } from './ChipDistributionChart';
 
 interface DecisionPanelProps {
   stock: SectorStock | null;
   bar?: StockKlineBar | null;
   loading?: boolean;
-  realtimeQuote?: RealtimeStockQuote | null;
-  realtimeLoading?: boolean;
-  realtimeDelayed?: boolean;
-  realtimeMarketStatus?: string;
 }
 
 function formatNumber(value: number | null | undefined, digits = 2): string {
@@ -83,10 +78,6 @@ export function DecisionPanel({
   stock,
   bar,
   loading = false,
-  realtimeQuote = null,
-  realtimeLoading = false,
-  realtimeDelayed = false,
-  realtimeMarketStatus = '',
 }: DecisionPanelProps) {
   if (loading) {
     return <aside className="terminal-panel decision-panel"><div className="terminal-empty"><span className="loading-pulse" />行情快照加载中...</div></aside>;
@@ -126,38 +117,6 @@ export function DecisionPanel({
         <div><strong>{stock.name}</strong><span>{stock.code}</span></div>
         <small>交易日 {snapshot.date}</small>
       </div>
-
-      <section className="decision-section realtime-stock-snapshot">
-        <h3>
-          <Radio size={12} />实时行情 {realtimeQuote?.interval || '1m'}
-          <em className={realtimeDelayed ? 'is-delayed' : ''}>
-            {realtimeDelayed
-              ? '数据可能延迟'
-              : realtimeMarketStatus
-                ? marketStatusLabel(realtimeMarketStatus)
-                : '等待行情'}
-          </em>
-        </h3>
-        {realtimeLoading && !realtimeQuote ? (
-          <p className="indicator-empty"><span className="loading-pulse" />实时行情加载中</p>
-        ) : !realtimeQuote ? (
-          <p className="indicator-empty">暂无实时行情</p>
-        ) : (
-          <>
-            <div className="snapshot-grid realtime-snapshot-grid">
-              <span>当前价<b>{formatNumber(realtimeQuote.close)}</b></span>
-              <span>开盘<b>{formatNumber(realtimeQuote.open)}</b></span>
-              <span>最高<b>{formatNumber(realtimeQuote.high)}</b></span>
-              <span>最低<b>{formatNumber(realtimeQuote.low)}</b></span>
-              <span>成交量<b>{formatAmount(realtimeQuote.volume)}</b></span>
-              <span>成交额<b>{formatAmount(realtimeQuote.amount)}</b></span>
-            </div>
-            <small className="realtime-quote-time">
-              更新 {formatShanghaiTime(realtimeQuote.timestamp)} · {realtimeQuote.provider || '未知来源'}
-            </small>
-          </>
-        )}
-      </section>
 
       <section className="decision-section market-snapshot">
         <h3><BarChart3 size={12} />日线行情</h3>

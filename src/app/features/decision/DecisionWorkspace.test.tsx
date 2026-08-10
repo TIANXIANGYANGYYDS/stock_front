@@ -38,18 +38,27 @@ vi.mock('./StockNavigator', () => ({
 
 vi.mock('../chart/ProfessionalCandlestickChart', () => ({
   ProfessionalCandlestickChart: ({
-    realtimeQuote,
-  }: {
-    realtimeQuote?: { code: string; close: number | null } | null;
-  }) => <section data-testid="chart">图表实时 {realtimeQuote?.code}:{realtimeQuote?.close}</section>,
+  intradayData,
+  intradayLoading,
+  intradayDelayed,
+}: {
+    intradayData?: { items: Array<{ code: string; timestamp: string; close: number | null }> } | null;
+    intradayLoading?: boolean;
+    intradayDelayed?: boolean;
+  }) => (
+    <section data-testid="chart">
+      分钟项 {intradayData?.items.map((item) => `${item.timestamp}:${item.close}`).join('|')}
+      :{String(intradayLoading)}:{String(intradayDelayed)}
+    </section>
+  ),
 }));
 
 vi.mock('./DecisionPanel', () => ({
-  DecisionPanel: ({
-    realtimeQuote,
-  }: {
-    realtimeQuote?: { code: string; close: number | null } | null;
-  }) => <aside data-testid="decision-panel">快照实时 {realtimeQuote?.code}:{realtimeQuote?.close}</aside>,
+  DecisionPanel: (props: Record<string, unknown>) => (
+    <aside data-testid="decision-panel">
+      {Object.keys(props).filter((key) => /realtime|intraday/i.test(key)).join('|') || '日线快照'}
+    </aside>
+  ),
 }));
 
 import { DecisionWorkspace } from './DecisionWorkspace';
@@ -89,7 +98,7 @@ async function flush(): Promise<void> {
 }
 
 describe('DecisionWorkspace realtime stock coordination', () => {
-  it('merges batch prices, preserves daily percentages, and follows selected-stock quotes', async () => {
+  it('merges batch prices, preserves daily percentages, and sends complete selected intraday data only to the chart', async () => {
     apiMocks.getStockList.mockResolvedValue([
       {
         code: '600519', name: '贵州茅台', tradeDate: '2026-08-10',
@@ -118,7 +127,15 @@ describe('DecisionWorkspace realtime stock coordination', () => {
       marketStatus: 'open',
       interval: '1m',
       items: code === '600519' ? [{
-        code: '600519', close: 1348.86,
+        code: '600519', name: '贵州茅台', market: 'SH', tradeDate: '2026-08-10',
+        interval: '1m', timestamp: '2026-08-10T09:30:00+08:00', open: 1347,
+        high: 1348, low: 1346.5, close: 1347.52, volume: 800,
+        amount: 1_078_016, provider: 'TENCENT',
+      }, {
+        code: '600519', name: '贵州茅台', market: 'SH', tradeDate: '2026-08-10',
+        interval: '1m', timestamp: '2026-08-10T09:31:00+08:00', open: 1347.52,
+        high: 1349.2, low: 1347.5, close: 1348.86, volume: 1000,
+        amount: 1_348_860, provider: 'TENCENT',
       }] : [],
       missingCodes: code === '000001' ? ['000001'] : [],
     }));
@@ -132,8 +149,8 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     expect(quoteMocks.useRealtimeStocks).toHaveBeenLastCalledWith(['600519', '000001']);
     expect(host.textContent).toContain('600519:1348.86:1.2');
     expect(host.textContent).toContain('000001:12:-0.4');
-    expect(host.textContent).toContain('图表实时 600519:1348.86');
-    expect(host.textContent).toContain('快照实时 600519:1348.86');
+    expect(host.textContent).toContain('分钟项 2026-08-10T09:30:00+08:00:1347.52|2026-08-10T09:31:00+08:00:1348.86:false:false');
+    expect(host.textContent).toContain('日线快照');
 
     const select = [...host.querySelectorAll('button')].find(
       (item) => item.textContent?.includes('选择平安银行'),
@@ -143,6 +160,6 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     await flush();
 
     expect(quoteMocks.useRealtimeStock).toHaveBeenLastCalledWith('000001');
-    expect(host.textContent).toContain('图表实时 :');
+    expect(host.textContent).toContain('分钟项 :false:false');
   });
 });

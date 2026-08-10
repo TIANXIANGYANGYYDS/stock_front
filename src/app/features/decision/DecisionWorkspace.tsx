@@ -38,9 +38,6 @@ export function DecisionWorkspace({
     () => mergeRealtimeStockItems(stockItems, batchRealtime.data?.items ?? []),
     [batchRealtime.data?.items, stockItems],
   );
-  const realtimeQuote = selectedRealtime.data?.items.find(
-    (item) => item.code === selectedStockCode,
-  ) ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -116,20 +113,15 @@ export function DecisionWorkspace({
       <ProfessionalCandlestickChart
         stock={selectedStock}
         loading={detailLoading}
-        realtimeQuote={realtimeQuote}
-        realtimeLoading={selectedRealtime.initialLoading}
-        realtimeDelayed={selectedRealtime.delayed}
-        realtimeMarketStatus={selectedRealtime.marketStatus}
+        intradayData={selectedRealtime.data}
+        intradayLoading={selectedRealtime.initialLoading}
+        intradayDelayed={selectedRealtime.delayed}
         onActiveDateChange={setActiveDate}
       />
       <DecisionPanel
         stock={selectedStock}
         bar={selectSnapshotBar(selectedStock, activeDate)}
         loading={detailLoading}
-        realtimeQuote={realtimeQuote}
-        realtimeLoading={selectedRealtime.initialLoading}
-        realtimeDelayed={selectedRealtime.delayed}
-        realtimeMarketStatus={selectedRealtime.marketStatus}
       />
       {detailError && <div className="workspace-floating-error">{detailError}</div>}
     </main>
