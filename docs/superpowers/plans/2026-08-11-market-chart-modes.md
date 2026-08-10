@@ -52,3 +52,13 @@
 - [ ] 仅在测试证明现有行为不满足时修改组件。
 - [ ] 运行实时相关测试、完整 `npm test -- --run` 和 `npm run build`。
 - [ ] 检查 1440px、1024px、390px，记录 live API 能力与搜索后端耗时结论。
+
+### Task 5: 搜索请求取消与旧结果保留
+
+**Files:** `api.ts`、`api-trade-date.test.ts`、`DecisionWorkspace.tsx`、对应测试、`StockNavigator.tsx`、对应测试、必要 CSS
+
+- [ ] 先测试过期列表/详情请求会被 abort、规范化等价关键词不重复请求、查询期间和失败后保留已有结果。
+- [ ] 运行聚焦测试，确认当前请求没有 signal 且加载时隐藏旧结果而失败。
+- [ ] 为列表/详情 API 增加可选 `AbortSignal`；工作区 cleanup 真实取消请求，继续保留 180ms debounce 以保护慢后端。
+- [ ] 让 Navigator 仅在首次无数据加载时显示整块占位；已有结果时继续显示并标记查询中或“查询失败，保留上次结果”。
+- [ ] 运行 API、工作区、导航测试和 build；记录关键词接口实测主要耗时来自后端 TTFB，而非前端或 Vite 代理。
