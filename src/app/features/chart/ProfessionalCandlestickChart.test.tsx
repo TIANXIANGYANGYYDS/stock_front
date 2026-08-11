@@ -497,6 +497,30 @@ describe('ProfessionalCandlestickChart interactions', () => {
     await act(async () => root.unmount());
   });
 
+  it('prioritizes stale realtime over intraday loading when no minute bar exists', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        realtimeData={{ ...realtimeResponse, marketStatus: 'stale' }}
+        intradayData={{ ...intradayResponse, count: 0, items: [] }}
+        intradayLoading
+        chartMode="intraday"
+        intradayInterval="1m"
+      />,
+    ));
+
+    const state = host.querySelector('.stock-live-state');
+    expect(state?.textContent).toContain('数据可能延迟');
+    expect(state?.textContent).not.toContain('分钟行情加载中');
+    expect(state?.className).toContain('is-delayed');
+
+    await act(async () => root.unmount());
+  });
+
   it('uses a neutral tone for realtime-only price without a matching daily direction', async () => {
     const snapshot: StockRealtimeQuote = {
       ...realtimeQuote,

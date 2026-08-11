@@ -592,10 +592,10 @@ export function ProfessionalCandlestickChart({
   const intradayIsDelayed = realtimeData?.marketStatus === 'stale'
     || (Boolean(intradayData) && (intradayDelayed || Boolean(intradayError)));
   const minuteState = intradayBars.length === 0
-    ? intradayLoading
-      ? '分钟行情加载中'
-      : intradayIsDelayed
-        ? '数据可能延迟'
+    ? intradayIsDelayed
+      ? '数据可能延迟'
+      : intradayLoading
+        ? '分钟行情加载中'
         : !intradayData && intradayError
           ? '分钟行情暂不可用'
           : '暂无当日分钟行情'
