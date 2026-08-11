@@ -435,17 +435,10 @@ interface RawRealtimeMarketIndicesData {
   items?: RawRealtimeMarketIndex[] | null;
 }
 
-export interface RawRealtimeStockQuote {
+export interface RawStockRealtimeQuote {
   code?: unknown;
   name?: unknown;
   market?: unknown;
-  trade_date?: unknown;
-  interval?: unknown;
-  timestamp?: unknown;
-  open?: unknown;
-  high?: unknown;
-  low?: unknown;
-  close?: unknown;
   price?: unknown;
   source_time?: unknown;
   received_at?: unknown;
@@ -454,12 +447,30 @@ export interface RawRealtimeStockQuote {
   provider?: unknown;
 }
 
-interface RawRealtimeStocksData {
+export interface RawStockIntradayBar {
+  code?: unknown;
+  timestamp?: unknown;
+  open?: unknown;
+  high?: unknown;
+  low?: unknown;
+  close?: unknown;
+  volume?: unknown;
+  amount?: unknown;
+  provider?: unknown;
+}
+
+interface RawStockRealtimeData {
   trading_date?: unknown;
   market_status?: unknown;
-  interval?: unknown;
-  items?: RawRealtimeStockQuote[] | null;
+  items?: RawStockRealtimeQuote[] | null;
   missing_codes?: unknown;
+}
+
+interface RawStockIntradayData {
+  trading_date?: unknown;
+  interval?: unknown;
+  count?: unknown;
+  items?: RawStockIntradayBar[] | null;
 }
 
 interface RealtimeDataResponse<T> {
@@ -750,18 +761,13 @@ export interface RealtimeMarketIndicesResponse {
   items: MarketIndexQuote[];
 }
 
-export interface RealtimeStockQuote {
+export type IntradayInterval = '1m' | '5m';
+
+export interface StockRealtimeQuote {
   code: string;
   name: string;
   market: string;
-  tradeDate: string;
-  interval: string;
-  timestamp: string;
-  open: number | null;
-  high: number | null;
-  low: number | null;
-  close: number | null;
-  snapshotPrice: number | null;
+  price: number | null;
   sourceTime: string;
   receivedAt: string;
   volume: number | null;
@@ -769,12 +775,31 @@ export interface RealtimeStockQuote {
   provider: string;
 }
 
-export interface RealtimeStocksResponse {
+export interface StockRealtimeResponse {
   tradingDate: string;
   marketStatus: string;
-  interval: string;
-  items: RealtimeStockQuote[];
+  items: StockRealtimeQuote[];
   missingCodes: string[];
+}
+
+export interface StockIntradayBar {
+  code: string;
+  interval: IntradayInterval;
+  timestamp: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  volume: number | null;
+  amount: number | null;
+  provider: string;
+}
+
+export interface StockIntradayResponse {
+  tradingDate: string;
+  interval: IntradayInterval;
+  count: number;
+  items: StockIntradayBar[];
 }
 
 export interface StockListItem {
@@ -930,24 +955,32 @@ export function mapRealtimeMarketIndex(
   };
 }
 
-export function mapRealtimeStockQuote(
-  raw: RawRealtimeStockQuote,
-  fallbackInterval = '1m',
-): RealtimeStockQuote {
+export function mapStockRealtimeQuote(raw: RawStockRealtimeQuote): StockRealtimeQuote {
   return {
     code: toText(raw.code),
     name: toText(raw.name, toText(raw.code, '未知股票')),
     market: toText(raw.market),
-    tradeDate: toText(raw.trade_date),
-    interval: toText(raw.interval, fallbackInterval),
+    price: toNullableNumber(raw.price),
+    sourceTime: toText(raw.source_time),
+    receivedAt: toText(raw.received_at),
+    volume: toNullableNumber(raw.volume),
+    amount: toNullableNumber(raw.amount),
+    provider: toText(raw.provider, 'unknown'),
+  };
+}
+
+export function mapStockIntradayBar(
+  raw: RawStockIntradayBar,
+  interval: IntradayInterval,
+): StockIntradayBar {
+  return {
+    code: toText(raw.code),
+    interval,
     timestamp: toText(raw.timestamp),
     open: toNullableNumber(raw.open),
     high: toNullableNumber(raw.high),
     low: toNullableNumber(raw.low),
     close: toNullableNumber(raw.close),
-    snapshotPrice: toNullableNumber(raw.price),
-    sourceTime: toText(raw.source_time),
-    receivedAt: toText(raw.received_at),
     volume: toNullableNumber(raw.volume),
     amount: toNullableNumber(raw.amount),
     provider: toText(raw.provider, 'unknown'),
@@ -974,44 +1007,59 @@ export async function getRealtimeMarketIndices(
 
 export async function getRealtimeStocks(
   codes: string[],
-  interval = '1m',
   signal?: AbortSignal,
-): Promise<RealtimeStocksResponse> {
+): Promise<StockRealtimeResponse> {
   const normalizedCodes = [...new Set(codes.map((code) => code.trim()).filter(Boolean))];
-  const response = await requestJson<RealtimeDataResponse<RawRealtimeStocksData>>(
+  const response = await requestJson<RealtimeDataResponse<RawStockRealtimeData>>(
     '/api/v1/stocks/realtime',
-    { codes: normalizedCodes.join(','), interval },
+    { codes: normalizedCodes.join(',') },
     { signal },
   );
   const data = response.data ?? {};
-  const resolvedInterval = toText(data.interval, interval);
   return {
     tradingDate: toText(data.trading_date),
     marketStatus: toText(data.market_status, 'unknown'),
-    interval: resolvedInterval,
-    items: (data.items ?? []).map((item) => mapRealtimeStockQuote(item, resolvedInterval)),
+    items: (data.items ?? []).map(mapStockRealtimeQuote),
     missingCodes: toStringArray(data.missing_codes),
   };
 }
 
 export async function getRealtimeStock(
   code: string,
-  interval = '1m',
   signal?: AbortSignal,
-): Promise<RealtimeStocksResponse> {
-  const response = await requestJson<RealtimeDataResponse<RawRealtimeStocksData>>(
+): Promise<StockRealtimeResponse> {
+  const response = await requestJson<RealtimeDataResponse<RawStockRealtimeData>>(
     `/api/v1/stocks/${encodeURIComponent(code.trim())}/realtime`,
-    { interval },
+    undefined,
     { signal },
   );
   const data = response.data ?? {};
-  const resolvedInterval = toText(data.interval, interval);
   return {
     tradingDate: toText(data.trading_date),
     marketStatus: toText(data.market_status, 'unknown'),
-    interval: resolvedInterval,
-    items: (data.items ?? []).map((item) => mapRealtimeStockQuote(item, resolvedInterval)),
+    items: (data.items ?? []).map(mapStockRealtimeQuote),
     missingCodes: toStringArray(data.missing_codes),
+  };
+}
+
+export async function getStockIntraday(
+  code: string,
+  tradeDate: string,
+  interval: IntradayInterval,
+  signal?: AbortSignal,
+): Promise<StockIntradayResponse> {
+  const response = await requestJson<RealtimeDataResponse<RawStockIntradayData>>(
+    `/api/v1/stocks/${encodeURIComponent(code.trim())}/intraday`,
+    { trade_date: tradeDate, interval },
+    { signal },
+  );
+  const data = response.data ?? {};
+  const items = (data.items ?? []).map((item) => mapStockIntradayBar(item, interval));
+  return {
+    tradingDate: toText(data.trading_date, tradeDate),
+    interval,
+    count: toNullableNumber(data.count) ?? items.length,
+    items,
   };
 }
 
