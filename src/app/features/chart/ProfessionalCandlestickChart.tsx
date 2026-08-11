@@ -225,7 +225,7 @@ export function ProfessionalCandlestickChart({
     () => selectIntradayBars(
       intradayData?.items ?? [],
       selectedCode,
-      intradayData?.tradingDate ?? '',
+      intradayData?.tradeDate ?? '',
       intradayInterval,
     ),
     [intradayData, intradayInterval, selectedCode],
@@ -575,17 +575,22 @@ export function ProfessionalCandlestickChart({
       : legend?.changePercent
     : null;
   const priceTone = isIntradayMode
-    ? latestIntradayBar
+    ? selectedRealtime
+      ? 'flat'
+      : latestIntradayBar
       ? toneFromDirection(
           (latestIntradayBar.close as number) - (latestIntradayBar.open as number),
         )
       : 'flat'
     : toneFromDirection(dailyDirection);
   const displayedPrice = isIntradayMode
-    ? latestIntradayBar?.close ?? selectedRealtime?.price
+    ? selectedRealtime?.price ?? latestIntradayBar?.close
     : showingCurrentDailyPosition
       ? selectedRealtime?.price ?? legend?.close ?? dailyStock?.close
       : legend?.close;
+  const showingRealtimeDailyPrice = !isIntradayMode
+    && showingCurrentDailyPosition
+    && selectedRealtime !== null;
   const realtimeIsDelayed = realtimeDelayed
     || Boolean(realtimeError)
     || realtimeData?.marketStatus === 'stale';
@@ -664,17 +669,18 @@ export function ProfessionalCandlestickChart({
             <strong>{stockName || stock?.name || selectedRealtime?.name || '等待选择股票'}</strong>
             <span>{stockCode || stock?.code || selectedRealtime?.code || '--'}</span>
             {(isIntradayMode
-              ? intradayData?.tradingDate
+              ? intradayData?.tradeDate
               : legend?.time || dailyStock?.tradeDate) && (
               <span className="trade-date-chip">
                 {isIntradayMode
-                  ? intradayData?.tradingDate
+                  ? intradayData?.tradeDate
                   : legend?.time || dailyStock?.tradeDate}
               </span>
             )}
           </div>
           <div className="stock-price-row">
             <span className={toneClass(priceTone)}>{formatPrice(displayedPrice)}</span>
+            {showingRealtimeDailyPrice && <small className="quote-source-tag">实时价</small>}
             {!isIntradayMode && (
               <small className={toneClass(priceTone)}>
                 {legend?.changePercent === null || legend?.changePercent === undefined
@@ -809,7 +815,7 @@ export function ProfessionalCandlestickChart({
             <IntradayCandlestickChart
               bars={intradayBars}
               stockCode={selectedCode}
-              tradingDate={intradayData?.tradingDate}
+              tradingDate={intradayData?.tradeDate}
             />
           ) : (
             <div className="terminal-empty">

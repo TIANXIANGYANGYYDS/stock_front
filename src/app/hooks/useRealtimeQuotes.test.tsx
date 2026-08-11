@@ -123,7 +123,9 @@ describe('realtime quote domain hooks', () => {
 
   it('requests intraday bars only while the controlled chart query is enabled', async () => {
     apiMocks.getStockIntraday.mockResolvedValue({
-      tradingDate: '2026-08-10',
+      code: '600519',
+      name: '贵州茅台',
+      tradeDate: '2026-08-10',
       interval: '5m',
       count: 0,
       items: [],

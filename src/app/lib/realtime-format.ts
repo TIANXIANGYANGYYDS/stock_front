@@ -77,6 +77,7 @@ export function formatShanghaiTime(value: string): string {
 export function marketStatusLabel(status: string): string {
   if (status === 'open') return '交易中';
   if (status === 'closed') return '已闭市';
+  if (status === 'stale') return '行情延迟';
   return '状态未知';
 }
 

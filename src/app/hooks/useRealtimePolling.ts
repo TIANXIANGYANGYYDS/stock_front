@@ -109,9 +109,7 @@ export function useRealtimePolling<T>({
             return;
           }
           refreshQueued = false;
-          if (outcome === 'success' && lastMarketStatus !== 'closed') {
-            schedule();
-          } else if (outcome === 'failure' && (!hasData || lastMarketStatus === 'open')) {
+          if (outcome !== 'abort' && lastMarketStatus !== 'closed') {
             schedule();
           }
         });

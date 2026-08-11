@@ -195,15 +195,19 @@ describe('DecisionWorkspace realtime stock coordination', () => {
       missingCodes: code === '000001' ? ['000001'] : [],
     }));
     quoteMocks.useStockIntraday.mockImplementation((options: { code: string }) => pollingState({
-      tradingDate: '2026-08-10',
+      code: options.code,
+      name: options.code === '600519' ? '贵州茅台' : '',
+      tradeDate: '2026-08-10',
       interval: '1m',
       count: options.code === '600519' ? 2 : 0,
       items: options.code === '600519' ? [{
-        code: '600519', interval: '1m', timestamp: '2026-08-10T09:30:00+08:00', open: 1347,
+        code: '600519', name: '贵州茅台', market: 'SH', tradeDate: '2026-08-10',
+        interval: '1m', timestamp: '2026-08-10T09:30:00+08:00', open: 1347,
         high: 1348, low: 1346.5, close: 1347.52, volume: 800,
         amount: 1_078_016, provider: 'TENCENT',
       }, {
-        code: '600519', interval: '1m', timestamp: '2026-08-10T09:31:00+08:00', open: 1347.52,
+        code: '600519', name: '贵州茅台', market: 'SH', tradeDate: '2026-08-10',
+        interval: '1m', timestamp: '2026-08-10T09:31:00+08:00', open: 1347.52,
         high: 1349.2, low: 1347.5, close: 1348.86, volume: 1000,
         amount: 1_348_860, provider: 'TENCENT',
       }] : [],

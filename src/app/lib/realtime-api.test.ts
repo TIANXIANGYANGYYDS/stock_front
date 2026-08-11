@@ -79,6 +79,10 @@ describe('realtime quote mapping', () => {
   it('maps intraday OHLC values with a timestamp and interval', () => {
     const rawBar = {
       code: '600519',
+      name: '贵州茅台',
+      market: 'SH',
+      trade_date: '2026-08-11',
+      interval: '1m',
       timestamp: '2026-08-11T09:30:00+08:00',
       open: 1346.26,
       high: 1346.26,
@@ -89,10 +93,12 @@ describe('realtime quote mapping', () => {
       provider: 'tencent',
     };
 
-    expect(mapStockIntradayBar(rawBar, '1m')).toMatchObject({
-      code: '600519', interval: '1m',
+    expect(mapStockIntradayBar(rawBar, '1m')).toEqual({
+      code: '600519', name: '贵州茅台', market: 'SH',
+      tradeDate: '2026-08-11', interval: '1m',
       timestamp: '2026-08-11T09:30:00+08:00',
       open: 1346.26, high: 1346.26, low: 1340, close: 1340,
+      volume: 1000, amount: 1340000, provider: 'tencent',
     });
   });
 });
@@ -130,7 +136,17 @@ describe('realtime quote requests', () => {
         data: { trading_date: '2026-08-11', market_status: 'open', items: [] },
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
-        data: { trading_date: '2026-08-11', interval: '1m', count: 5, items: [] },
+        data: {
+          code: '600519/path', name: '贵州茅台', trade_date: '2026-08-11',
+          interval: '1m', count: 1,
+          items: [{
+            code: '600519/path', name: '贵州茅台', market: 'SH',
+            trade_date: '2026-08-11', interval: '1m',
+            timestamp: '2026-08-11T09:30:00+08:00',
+            open: 1346.26, high: 1346.26, low: 1340, close: 1340,
+            volume: 1000, amount: 1340000, provider: 'TENCENT',
+          }],
+        },
       }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     const controller = new AbortController();
@@ -139,7 +155,16 @@ describe('realtime quote requests', () => {
     await getRealtimeStock('600519/path', controller.signal);
     const intraday = await getStockIntraday('600519/path', '2026-08-11 09:30', '1m', controller.signal);
 
-    expect(intraday.count).toBe(5);
+    expect(intraday).toEqual({
+      code: '600519/path', name: '贵州茅台', tradeDate: '2026-08-11',
+      interval: '1m', count: 1,
+      items: [{
+        code: '600519/path', name: '贵州茅台', market: 'SH', tradeDate: '2026-08-11',
+        interval: '1m', timestamp: '2026-08-11T09:30:00+08:00',
+        open: 1346.26, high: 1346.26, low: 1340, close: 1340,
+        volume: 1000, amount: 1340000, provider: 'TENCENT',
+      }],
+    });
     expect(String(fetchMock.mock.calls[0][0])).toBe(
       '/backend-api/api/v1/stocks/realtime?codes=600519%2C000001',
     );

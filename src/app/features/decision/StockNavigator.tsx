@@ -18,6 +18,11 @@ function formatPrice(value: number | null): string {
   return value === null || !Number.isFinite(value) ? '--' : value.toFixed(2);
 }
 
+function changeTone(value: number | null): string {
+  if (value === null || !Number.isFinite(value) || value === 0) return 'market-flat';
+  return value > 0 ? 'market-rise' : 'market-fall';
+}
+
 export function StockNavigator({
   items,
   query,
@@ -72,7 +77,6 @@ export function StockNavigator({
           <div className="radar-placeholder">没有找到符合条件的股票</div>
         )}
         {items.map((stock) => {
-          const isUp = (stock.changePercent ?? 0) >= 0;
           const realtimeMissing = missingCodes.includes(stock.code);
           return (
             <button
@@ -84,7 +88,7 @@ export function StockNavigator({
               <span className="stock-name-code"><strong>{stock.name}</strong><small>{stock.code}</small></span>
               <span className="stock-list-price">
                 <b>{formatPrice(stock.close)}</b>
-                <small className={isUp ? 'market-rise' : 'market-fall'}>
+                <small className={changeTone(stock.changePercent)}>
                   {stock.changePercent === null
                     ? '--'
                     : `${stock.changePercent > 0 ? '+' : ''}${stock.changePercent.toFixed(2)}%`}

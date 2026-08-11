@@ -47,6 +47,7 @@ describe('realtime quote presentation rules', () => {
   it('labels open, closed, and unknown backend market states', () => {
     expect(marketStatusLabel('open')).toBe('交易中');
     expect(marketStatusLabel('closed')).toBe('已闭市');
+    expect(marketStatusLabel('stale')).toBe('行情延迟');
     expect(marketStatusLabel('provider_paused')).toBe('状态未知');
   });
 });

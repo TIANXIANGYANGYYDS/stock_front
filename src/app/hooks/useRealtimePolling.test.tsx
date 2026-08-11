@@ -129,6 +129,32 @@ describe('useRealtimePolling', () => {
     expect(request).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps polling after a stale-market success is followed by a refresh failure', async () => {
+    vi.useFakeTimers();
+    const request = vi.fn()
+      .mockResolvedValueOnce({ marketStatus: 'stale', version: 1 })
+      .mockRejectedValueOnce(new Error('接口请求失败: 503'))
+      .mockResolvedValueOnce({ marketStatus: 'stale', version: 2 });
+    let latest: RealtimePollingState<QuotePayload> | null = null;
+
+    await renderHookHarness({
+      queryKey: 'indices', request, getMarketStatus: (data) => data.marketStatus, intervalMs: 5000,
+    }, (state) => {
+      latest = state;
+    });
+
+    await act(async () => vi.advanceTimersByTime(5000));
+    await flushPromises();
+    expect(latest?.data).toEqual({ marketStatus: 'stale', version: 1 });
+    expect(latest?.delayed).toBe(true);
+    expect(latest?.error).toBe('数据可能延迟');
+
+    await act(async () => vi.advanceTimersByTime(5000));
+    await flushPromises();
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(latest?.data).toEqual({ marketStatus: 'stale', version: 2 });
+  });
+
   it('pauses while hidden and refreshes immediately when visibility returns', async () => {
     vi.useFakeTimers();
     const visibility = vi.spyOn(document, 'visibilityState', 'get');

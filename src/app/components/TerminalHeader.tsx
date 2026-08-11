@@ -51,7 +51,8 @@ export function TerminalHeader({
 }: TerminalHeaderProps) {
   const orderedIndices = orderMarketIndices(realtimeIndices?.items ?? []);
   const hasRealtimeData = (realtimeIndices?.items.length ?? 0) > 0;
-  const backendStale = realtimeIndices?.marketStatus === 'stale';
+  const backendStale = realtimeIndices?.marketStatus === 'stale'
+    || realtimeIndices?.items.some((item) => item.status === 'stale') === true;
   const dataDelayed = indicesDelayed || backendStale;
   const updatedTime = formatShanghaiTime(realtimeIndices?.updatedAt ?? '');
   const indexSummary = indicesError && !hasRealtimeData

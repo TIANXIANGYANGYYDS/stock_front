@@ -195,6 +195,9 @@ const realtimeResponse: StockRealtimeResponse = {
 
 const earlierIntradayBar: StockIntradayBar = {
   code: '600000',
+  name: '浦发银行',
+  market: 'SH',
+  tradeDate: '2026-08-10',
   interval: '1m',
   timestamp: '2026-08-10T01:31:00Z',
   open: 10.7,
@@ -217,7 +220,9 @@ const latestIntradayBar: StockIntradayBar = {
 };
 
 const intradayResponse: StockIntradayResponse = {
-  tradingDate: '2026-08-10',
+  code: '600000',
+  name: '浦发银行',
+  tradeDate: '2026-08-10',
   interval: '1m',
   count: 2,
   items: [latestIntradayBar, earlierIntradayBar],
@@ -246,6 +251,7 @@ describe('ProfessionalCandlestickChart interactions', () => {
     expect(dailyButton?.getAttribute('aria-pressed')).toBe('true');
     expect(host.querySelector('.stock-price-row')?.textContent).toContain('11.23');
     expect(host.querySelector('.stock-price-row > span')?.className).toBe('market-rise');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('实时价');
     expect(host.textContent).toContain('日线涨跌 +8.00%');
 
     const move = chartHarness.getCrosshairMove();
@@ -253,6 +259,7 @@ describe('ProfessionalCandlestickChart interactions', () => {
     await act(async () => move({ time: '2026-08-07', seriesData: new Map() }));
     expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.00');
     expect(host.querySelector('.stock-price-row')?.textContent).not.toContain('11.23');
+    expect(host.querySelector('.stock-price-row')?.textContent).not.toContain('实时价');
     expect(host.querySelector('.ohlc-legend')?.textContent).toContain('收 10.00');
 
     await act(async () => move({ time: undefined, seriesData: new Map() }));
@@ -384,8 +391,9 @@ describe('ProfessionalCandlestickChart interactions', () => {
       />,
     ));
 
-    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.92');
-    expect(host.querySelector('.stock-price-row > span')?.className).toBe('market-rise');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('11.23');
+    expect(host.querySelector('.stock-price-row')?.textContent).not.toContain('10.92');
+    expect(host.querySelector('.stock-price-row > span')?.className).toBe('market-flat');
     expect(host.textContent).toContain('分钟线 1m 09:32:00');
     expect(host.textContent).not.toContain('日线涨跌');
 
@@ -450,14 +458,14 @@ describe('ProfessionalCandlestickChart interactions', () => {
     const oneBarResponse = { ...intradayResponse, count: 1, items: [earlierIntradayBar] };
     await render({ intradayData: oneBarResponse, intradayDelayed: true });
     expect(host.textContent).toContain('数据可能延迟');
-    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.80');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('11.23');
 
     await render({
       realtimeData: { ...realtimeResponse, marketStatus: 'closed' },
       intradayData: oneBarResponse,
     });
     expect(host.textContent).toContain('已闭市 · 最后行情');
-    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.80');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('11.23');
 
     await act(async () => root.unmount());
   });

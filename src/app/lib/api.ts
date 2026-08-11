@@ -449,6 +449,10 @@ export interface RawStockRealtimeQuote {
 
 export interface RawStockIntradayBar {
   code?: unknown;
+  name?: unknown;
+  market?: unknown;
+  trade_date?: unknown;
+  interval?: unknown;
   timestamp?: unknown;
   open?: unknown;
   high?: unknown;
@@ -467,7 +471,9 @@ interface RawStockRealtimeData {
 }
 
 interface RawStockIntradayData {
-  trading_date?: unknown;
+  code?: unknown;
+  name?: unknown;
+  trade_date?: unknown;
   interval?: unknown;
   count?: unknown;
   items?: RawStockIntradayBar[] | null;
@@ -784,6 +790,9 @@ export interface StockRealtimeResponse {
 
 export interface StockIntradayBar {
   code: string;
+  name: string;
+  market: string;
+  tradeDate: string;
   interval: IntradayInterval;
   timestamp: string;
   open: number | null;
@@ -796,7 +805,9 @@ export interface StockIntradayBar {
 }
 
 export interface StockIntradayResponse {
-  tradingDate: string;
+  code: string;
+  name: string;
+  tradeDate: string;
   interval: IntradayInterval;
   count: number;
   items: StockIntradayBar[];
@@ -971,10 +982,15 @@ export function mapStockRealtimeQuote(raw: RawStockRealtimeQuote): StockRealtime
 
 export function mapStockIntradayBar(
   raw: RawStockIntradayBar,
-  interval: IntradayInterval,
+  fallbackInterval: IntradayInterval,
+  fallbackTradeDate = '',
 ): StockIntradayBar {
+  const interval = normalizeIntradayInterval(raw.interval, fallbackInterval);
   return {
     code: toText(raw.code),
+    name: toText(raw.name, toText(raw.code, '未知股票')),
+    market: toText(raw.market),
+    tradeDate: toText(raw.trade_date, fallbackTradeDate),
     interval,
     timestamp: toText(raw.timestamp),
     open: toNullableNumber(raw.open),
@@ -985,6 +1001,21 @@ export function mapStockIntradayBar(
     amount: toNullableNumber(raw.amount),
     provider: toText(raw.provider, 'unknown'),
   };
+}
+
+function normalizeIntradayInterval(
+  value: unknown,
+  fallback: IntradayInterval,
+): IntradayInterval {
+  switch (toText(value)) {
+    case '1m': return '1m';
+    case '5m': return '5m';
+    case '15m': return '15m';
+    case '30m': return '30m';
+    case '60m': return '60m';
+    case '120m': return '120m';
+    default: return fallback;
+  }
 }
 
 export async function getRealtimeMarketIndices(
@@ -1054,10 +1085,16 @@ export async function getStockIntraday(
     { signal },
   );
   const data = response.data ?? {};
-  const items = (data.items ?? []).map((item) => mapStockIntradayBar(item, interval));
+  const responseInterval = normalizeIntradayInterval(data.interval, interval);
+  const tradeDateValue = toText(data.trade_date, tradeDate);
+  const items = (data.items ?? []).map((item) => (
+    mapStockIntradayBar(item, responseInterval, tradeDateValue)
+  ));
   return {
-    tradingDate: toText(data.trading_date, tradeDate),
-    interval,
+    code: toText(data.code, code.trim()),
+    name: toText(data.name, toText(data.code, code.trim())),
+    tradeDate: tradeDateValue,
+    interval: responseInterval,
     count: toNullableNumber(data.count) ?? items.length,
     items,
   };

@@ -151,4 +151,37 @@ describe('StockNavigator', () => {
 
     await act(async () => root.unmount());
   });
+
+  it('uses red for rises, green for falls, and neutral for flat or unknown changes', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    const toneItems: StockListItem[] = [
+      ...items,
+      { code: '300001', name: '特锐德', tradeDate: '2026-08-07', close: 22, changePercent: 0, amount: 8 },
+      { code: '688001', name: '华兴源创', tradeDate: '2026-08-07', close: 30, changePercent: null, amount: 7 },
+    ];
+
+    await act(async () => root.render(
+      <StockNavigator
+        items={toneItems}
+        query=""
+        selectedCode="000001"
+        loading={false}
+        error={null}
+        missingCodes={[]}
+        realtimeDelayed={false}
+        realtimeError={null}
+        onQueryChange={() => undefined}
+        onSelect={() => undefined}
+      />,
+    ));
+
+    const tones = [...host.querySelectorAll('.stock-list-price small')]
+      .map((node) => node.className);
+    expect(tones).toEqual(['market-rise', 'market-fall', 'market-flat', 'market-flat']);
+
+    await act(async () => root.unmount());
+  });
 });
