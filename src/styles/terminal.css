@@ -409,6 +409,14 @@ button {
   box-shadow: 0 0 8px rgba(24, 185, 139, 0.7);
 }
 
+.data-live.is-delayed {
+  color: var(--terminal-warning);
+}
+
+.data-live.is-delayed i {
+  background: var(--terminal-warning);
+}
+
 .opportunity-radar {
   display: grid;
   grid-template-rows: auto auto auto minmax(130px, 0.85fr) auto minmax(150px, 1.15fr);
@@ -590,6 +598,15 @@ button {
 
 .navigator-stock-row.is-active { box-shadow: inset 2px 0 var(--terminal-accent); }
 
+.navigator-stock-row.is-realtime-missing {
+  opacity: .82;
+}
+
+.realtime-stock-warning {
+  min-height: 30px;
+  padding: 6px 10px;
+}
+
 .navigator-stock-row .stock-name-code strong { font-size: 13px; }
 .navigator-stock-row .stock-name-code small,
 .navigator-stock-row .stock-list-price small { font-size: 10px; }
@@ -715,6 +732,12 @@ button {
   color: var(--terminal-muted);
   font-size: 8px;
   text-align: center;
+}
+
+.navigator-stock-row.is-realtime-missing .stock-date-tag {
+  border-color: rgba(245, 185, 66, .28);
+  color: var(--terminal-warning);
+  white-space: nowrap;
 }
 
 .radar-placeholder,
@@ -846,6 +869,7 @@ button {
 }
 
 .chart-periods,
+.intraday-intervals,
 .chart-tools {
   display: flex;
   align-items: center;
@@ -854,6 +878,33 @@ button {
 
 .chart-periods {
   flex: 0 0 auto;
+}
+
+.intraday-intervals {
+  gap: 4px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--terminal-border);
+  border-bottom: 1px solid var(--terminal-border);
+  background: rgba(9, 16, 25, .4);
+}
+
+.intraday-intervals button {
+  min-width: 42px;
+  height: 25px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--terminal-muted);
+  background: transparent;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.intraday-intervals button:hover,
+.intraday-intervals button.is-active {
+  border-color: rgba(53, 201, 243, .28);
+  color: var(--terminal-accent);
+  background: rgba(53, 201, 243, .08);
 }
 
 .chart-tools {

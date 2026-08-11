@@ -10,10 +10,10 @@ import {
   type ISeriesApi,
   type Time,
 } from 'lightweight-charts';
-import type { RealtimeStockQuote } from '../../lib/api';
+import type { StockIntradayBar } from '../../lib/api';
 
 interface IntradayCandlestickChartProps {
-  quotes: RealtimeStockQuote[];
+  bars: StockIntradayBar[];
   stockCode: string;
   tradingDate?: string;
 }
@@ -44,7 +44,7 @@ function formatShanghaiMinute(time: Time): string {
 }
 
 export function IntradayCandlestickChart({
-  quotes,
+  bars,
   stockCode,
   tradingDate,
 }: IntradayCandlestickChartProps) {
@@ -150,31 +150,31 @@ export function IntradayCandlestickChart({
   }, []);
 
   useEffect(() => {
-    candleSeriesRef.current?.setData(quotes.map((quote) => ({
-      time: toEpochSeconds(quote.timestamp),
-      open: quote.open as number,
-      high: quote.high as number,
-      low: quote.low as number,
-      close: quote.close as number,
+    candleSeriesRef.current?.setData(bars.map((bar) => ({
+      time: toEpochSeconds(bar.timestamp),
+      open: bar.open as number,
+      high: bar.high as number,
+      low: bar.low as number,
+      close: bar.close as number,
     })));
-    volumeSeriesRef.current?.setData(quotes.flatMap((quote) => (
-      typeof quote.volume === 'number' && Number.isFinite(quote.volume)
+    volumeSeriesRef.current?.setData(bars.flatMap((bar) => (
+      typeof bar.volume === 'number' && Number.isFinite(bar.volume)
         ? [{
-            time: toEpochSeconds(quote.timestamp),
-            value: quote.volume,
-            color: (quote.close as number) >= (quote.open as number)
+            time: toEpochSeconds(bar.timestamp),
+            value: bar.volume,
+            color: (bar.close as number) >= (bar.open as number)
               ? 'rgba(240, 100, 97, 0.52)'
               : 'rgba(32, 185, 139, 0.52)',
           }]
         : []
     )));
 
-    const datasetKey = `${stockCode}:${tradingDate ?? ''}`;
-    if (quotes.length > 0 && fittedDatasetRef.current !== datasetKey) {
+    const datasetKey = `${stockCode}:${tradingDate ?? ''}:${bars[0]?.interval ?? ''}`;
+    if (bars.length > 0 && fittedDatasetRef.current !== datasetKey) {
       chartRef.current?.timeScale().fitContent();
       fittedDatasetRef.current = datasetKey;
     }
-  }, [quotes, stockCode, tradingDate]);
+  }, [bars, stockCode, tradingDate]);
 
   return <div ref={containerRef} className="chart-canvas intraday-chart-canvas" />;
 }

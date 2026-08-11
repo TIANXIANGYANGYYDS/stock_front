@@ -152,6 +152,31 @@ describe('TerminalHeader market index strip', () => {
     await act(async () => root.unmount());
   });
 
+  it('treats the backend stale market status as delayed while retaining quotes', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <TerminalHeader
+        activeView="decision"
+        tradeDate="2026-08-07"
+        realtimeIndices={{ ...realtimeIndices, marketStatus: 'stale' }}
+        indicesLoading={false}
+        indicesDelayed={false}
+        indicesError={null}
+        onViewChange={vi.fn()}
+      />,
+    ));
+
+    expect(host.textContent).toContain('数据延迟');
+    expect(host.textContent).toContain('数据可能延迟');
+    expect(host.textContent).toContain('3966.59');
+    expect(host.querySelector('.market-session small')?.className).toContain('is-delayed');
+
+    await act(async () => root.unmount());
+  });
+
   it('shows unavailable without claiming a last quote when the initial index request fails', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);

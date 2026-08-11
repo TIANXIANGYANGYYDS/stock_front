@@ -35,6 +35,9 @@ describe('StockNavigator', () => {
             selectedCode={selectedCode}
             loading={false}
             error={null}
+            missingCodes={[]}
+            realtimeDelayed={false}
+            realtimeError={null}
             onQueryChange={setQuery}
             onSelect={setSelectedCode}
           />
@@ -75,6 +78,9 @@ describe('StockNavigator', () => {
         selectedCode="000001"
         loading
         error={null}
+        missingCodes={[]}
+        realtimeDelayed={false}
+        realtimeError={null}
         onQueryChange={() => undefined}
         onSelect={() => undefined}
       />,
@@ -101,6 +107,9 @@ describe('StockNavigator', () => {
         selectedCode="000001"
         loading={false}
         error="网络异常"
+        missingCodes={[]}
+        realtimeDelayed={false}
+        realtimeError={null}
         onQueryChange={() => undefined}
         onSelect={() => undefined}
       />,
@@ -109,6 +118,36 @@ describe('StockNavigator', () => {
     expect(host.textContent).toContain('查询失败，保留上次结果');
     expect(host.textContent).toContain('平安银行');
     expect(host.textContent).toContain('浦发银行');
+
+    await act(async () => root.unmount());
+  });
+
+  it('keeps daily fallback prices visible and marks missing and delayed realtime rows', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <StockNavigator
+        items={items}
+        query=""
+        selectedCode="000001"
+        loading={false}
+        error={null}
+        missingCodes={['600000']}
+        realtimeDelayed
+        realtimeError="实时行情暂不可用"
+        onQueryChange={() => undefined}
+        onSelect={() => undefined}
+      />,
+    ));
+
+    const rows = [...host.querySelectorAll('.navigator-stock-row')];
+    expect(rows[1].textContent).toContain('10.80');
+    expect(rows[1].textContent).toContain('日线回退');
+    expect(rows[1].className).toContain('is-realtime-missing');
+    expect(host.textContent).toContain('实时行情延迟');
+    expect(host.textContent).toContain('实时行情暂不可用');
 
     await act(async () => root.unmount());
   });

@@ -51,11 +51,13 @@ export function TerminalHeader({
 }: TerminalHeaderProps) {
   const orderedIndices = orderMarketIndices(realtimeIndices?.items ?? []);
   const hasRealtimeData = (realtimeIndices?.items.length ?? 0) > 0;
+  const backendStale = realtimeIndices?.marketStatus === 'stale';
+  const dataDelayed = indicesDelayed || backendStale;
   const updatedTime = formatShanghaiTime(realtimeIndices?.updatedAt ?? '');
   const indexSummary = indicesError && !hasRealtimeData
     ? '行情暂不可用'
     : hasRealtimeData
-      ? `${indicesDelayed || indicesError ? '数据可能延迟 · ' : ''}${realtimeIndices?.marketStatus === 'closed' ? '最后行情 · ' : ''}更新 ${updatedTime}`
+      ? `${dataDelayed || indicesError ? '数据可能延迟 · ' : ''}${realtimeIndices?.marketStatus === 'closed' ? '最后行情 · ' : ''}更新 ${updatedTime}`
       : realtimeIndices
         ? `更新 ${updatedTime}`
         : '等待指数行情';
@@ -91,12 +93,12 @@ export function TerminalHeader({
 
         <div className="terminal-actions">
           <div className="terminal-search-hint"><Search size={14} /><span>股票 / 板块</span><kbd>⌘ K</kbd></div>
-          <div className={`api-state ${indicesDelayed || indicesError ? 'is-error' : ''}`}>
+          <div className={`api-state ${dataDelayed || indicesError ? 'is-error' : ''}`}>
             <Radio size={13} />
             <span>
               {indicesLoading && !hasRealtimeData
                 ? '连接中'
-                : indicesDelayed || indicesError
+                : dataDelayed || indicesError
                   ? '数据延迟'
                   : '数据在线'}
             </span>
@@ -112,7 +114,7 @@ export function TerminalHeader({
             {realtimeIndices && <em>{marketStatusLabel(realtimeIndices.marketStatus)}</em>}
           </span>
           <strong>{realtimeIndices?.tradingDate || tradeDate || '--'}</strong>
-          <small className={indicesDelayed || indicesError ? 'is-delayed' : ''}>
+          <small className={dataDelayed || indicesError ? 'is-delayed' : ''}>
             {indexSummary}
           </small>
         </div>

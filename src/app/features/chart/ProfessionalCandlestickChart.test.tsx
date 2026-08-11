@@ -4,8 +4,10 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
-  RealtimeStockQuote,
-  RealtimeStocksResponse,
+  StockIntradayBar,
+  StockIntradayResponse,
+  StockRealtimeQuote,
+  StockRealtimeResponse,
   SectorStock,
 } from '../../lib/api';
 
@@ -172,37 +174,40 @@ const nextNavigationStock: SectorStock = {
   name: '东山精密',
 };
 
-const realtimeQuote: RealtimeStockQuote = {
+const realtimeQuote: StockRealtimeQuote = {
   code: '600000',
   name: '浦发银行',
   market: 'SH',
-  tradeDate: '2026-08-10',
-  interval: '1m',
-  timestamp: '2026-08-10T01:31:00Z',
-  open: 10.7,
-  high: 10.9,
-  low: 10.65,
-  close: 10.88,
-  snapshotPrice: null,
-  sourceTime: '',
-  receivedAt: '',
+  price: 11.23,
+  sourceTime: '2026-08-10T01:33:00Z',
+  receivedAt: '2026-08-10T01:33:01Z',
   volume: 1000,
-  amount: 10880,
+  amount: 11230,
   provider: 'TENCENT',
 };
 
-const earlierIntradayQuote: RealtimeStockQuote = {
-  ...realtimeQuote,
+const realtimeResponse: StockRealtimeResponse = {
+  tradingDate: '2026-08-10',
+  marketStatus: 'open',
+  items: [realtimeQuote],
+  missingCodes: [],
+};
+
+const earlierIntradayBar: StockIntradayBar = {
+  code: '600000',
+  interval: '1m',
   timestamp: '2026-08-10T01:31:00Z',
   open: 10.7,
   high: 10.84,
   low: 10.68,
   close: 10.8,
   volume: 1_000,
+  amount: 10_800,
+  provider: 'TENCENT',
 };
 
-const latestIntradayQuote: RealtimeStockQuote = {
-  ...realtimeQuote,
+const latestIntradayBar: StockIntradayBar = {
+  ...earlierIntradayBar,
   timestamp: '2026-08-10T01:32:00Z',
   open: 10.8,
   high: 10.95,
@@ -211,12 +216,11 @@ const latestIntradayQuote: RealtimeStockQuote = {
   volume: null,
 };
 
-const intradayResponse: RealtimeStocksResponse = {
+const intradayResponse: StockIntradayResponse = {
   tradingDate: '2026-08-10',
-  marketStatus: 'open',
   interval: '1m',
-  items: [latestIntradayQuote, earlierIntradayQuote],
-  missingCodes: [],
+  count: 2,
+  items: [latestIntradayBar, earlierIntradayBar],
 };
 
 afterEach(() => {
@@ -227,26 +231,32 @@ afterEach(() => {
 });
 
 describe('ProfessionalCandlestickChart interactions', () => {
-  it('defaults to daily mode without legacy range controls or minute price overwrite', async () => {
+  it('uses realtime price only at the latest daily position and historical close under crosshair', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
 
     await act(async () => root.render(
-      <ProfessionalCandlestickChart stock={stock} />,
+      <ProfessionalCandlestickChart stock={stock} realtimeData={realtimeResponse} />,
     ));
 
     const dailyButton = [...host.querySelectorAll('button')]
       .find((button) => button.textContent?.trim() === '日线');
     expect(dailyButton?.className).toContain('is-active');
     expect(dailyButton?.getAttribute('aria-pressed')).toBe('true');
-    expect(host.textContent).not.toContain('近10日');
-    expect(host.textContent).not.toContain('近20日');
-    expect(host.textContent).not.toContain('近30日');
-    expect(host.textContent).not.toContain('近60日');
-    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.80');
-    expect(host.textContent).not.toContain('实时 1m');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('11.23');
+    expect(host.querySelector('.stock-price-row > span')?.className).toBe('market-rise');
     expect(host.textContent).toContain('日线涨跌 +8.00%');
+
+    const move = chartHarness.getCrosshairMove();
+    if (!move) throw new Error('Crosshair handler was not registered');
+    await act(async () => move({ time: '2026-08-07', seriesData: new Map() }));
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.00');
+    expect(host.querySelector('.stock-price-row')?.textContent).not.toContain('11.23');
+    expect(host.querySelector('.ohlc-legend')?.textContent).toContain('收 10.00');
+
+    await act(async () => move({ time: undefined, seriesData: new Map() }));
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('11.23');
 
     await act(async () => root.unmount());
   });
@@ -301,33 +311,85 @@ describe('ProfessionalCandlestickChart interactions', () => {
     await act(async () => root.unmount());
   });
 
-  it('renders sorted minute candles and finite volume without reporting a minute date', async () => {
+  it('keeps chart mode and all six intraday interval controls externally controlled', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
-    const onActiveDateChange = vi.fn();
+    const onChartModeChange = vi.fn();
+    const onIntradayIntervalChange = vi.fn();
 
     await act(async () => root.render(
       <ProfessionalCandlestickChart
         stock={stock}
-        intradayData={intradayResponse}
-        onActiveDateChange={onActiveDateChange}
+        chartMode="daily"
+        onChartModeChange={onChartModeChange}
+        intradayInterval="1m"
+        onIntradayIntervalChange={onIntradayIntervalChange}
       />,
     ));
-    onActiveDateChange.mockClear();
 
     const minuteButton = [...host.querySelectorAll('button')]
       .find((button) => button.textContent?.trim() === '分钟线');
     if (!minuteButton) throw new Error('Missing minute mode button');
-    await act(async () => minuteButton.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await act(async () => minuteButton.click());
+    expect(onChartModeChange).toHaveBeenCalledWith('intraday');
+    expect(minuteButton.className).not.toContain('is-active');
 
-    expect(onActiveDateChange).toHaveBeenCalledTimes(1);
-    expect(onActiveDateChange).toHaveBeenCalledWith(null);
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        chartMode="intraday"
+        onChartModeChange={onChartModeChange}
+        intradayInterval="1m"
+        onIntradayIntervalChange={onIntradayIntervalChange}
+      />,
+    ));
+
+    const intervalButtons = [...host.querySelectorAll<HTMLButtonElement>('.intraday-intervals button')];
+    expect(intervalButtons.map((button) => [button.value, button.textContent])).toEqual([
+      ['1m', '1分'],
+      ['5m', '5分'],
+      ['15m', '15分'],
+      ['30m', '30分'],
+      ['60m', '60分'],
+      ['120m', '120分'],
+    ]);
+    expect(intervalButtons[0].className).toContain('is-active');
+    await act(async () => intervalButtons[4].click());
+    expect(onIntradayIntervalChange).toHaveBeenCalledWith('60m');
+
+    await act(async () => root.unmount());
+  });
+
+  it('renders only selected timestamp-based intraday bars in chronological order', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onActiveDateChange = vi.fn();
+    const wrongCodeBar: StockIntradayBar = {
+      ...latestIntradayBar,
+      code: '000001',
+      timestamp: '2026-08-10T01:33:00Z',
+      close: 99,
+    };
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        realtimeData={realtimeResponse}
+        intradayData={{ ...intradayResponse, count: 3, items: [wrongCodeBar, latestIntradayBar, earlierIntradayBar] }}
+        chartMode="intraday"
+        intradayInterval="1m"
+        onActiveDateChange={onActiveDateChange}
+      />,
+    ));
+
     expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.92');
+    expect(host.querySelector('.stock-price-row > span')?.className).toBe('market-rise');
     expect(host.textContent).toContain('分钟线 1m 09:32:00');
     expect(host.textContent).not.toContain('日线涨跌');
 
-    const minuteChart = chartHarness.charts[1];
+    const minuteChart = chartHarness.charts[0];
     expect(minuteChart.addSeries.mock.calls.map((call) => call[0])).toEqual([
       chartHarness.candlestickSeries,
       chartHarness.histogramSeries,
@@ -342,108 +404,70 @@ describe('ProfessionalCandlestickChart interactions', () => {
       { time: 1_786_325_460, value: 1_000, color: expect.any(String) },
     ]);
     expect(minuteChart.subscribeCrosshairMove).not.toHaveBeenCalled();
-    expect(onActiveDateChange).not.toHaveBeenCalledWith(1_786_325_520);
+    expect(onActiveDateChange).not.toHaveBeenCalledWith('2026-08-10T01:32:00Z');
 
     await act(async () => root.unmount());
   });
 
-  it('shows minute loading, empty, market, delayed, closed and one-candle states', async () => {
+  it('shows intraday loading, empty, error, delayed, and closed states without dropping bars', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
-    const render = async (
-      intradayData: RealtimeStocksResponse | null,
+    const render = async ({
+      realtimeData = realtimeResponse,
+      intradayData = null,
       intradayLoading = false,
       intradayDelayed = false,
-    ) => act(async () => root.render(
+      intradayError = null,
+    }: {
+      realtimeData?: StockRealtimeResponse | null;
+      intradayData?: StockIntradayResponse | null;
+      intradayLoading?: boolean;
+      intradayDelayed?: boolean;
+      intradayError?: string | null;
+    }) => act(async () => root.render(
       <ProfessionalCandlestickChart
         stock={stock}
+        realtimeData={realtimeData}
         intradayData={intradayData}
         intradayLoading={intradayLoading}
         intradayDelayed={intradayDelayed}
+        intradayError={intradayError}
+        chartMode="intraday"
+        intradayInterval="1m"
       />,
     ));
 
-    await render(null, true);
-    const minuteButton = [...host.querySelectorAll('button')]
-      .find((button) => button.textContent?.trim() === '分钟线');
-    if (!minuteButton) throw new Error('Missing minute mode button');
-    await act(async () => minuteButton.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await render({ realtimeData: null, intradayLoading: true });
     expect(host.textContent).toContain('分钟行情加载中');
 
-    await render({ ...intradayResponse, items: [] });
+    await render({ realtimeData: null, intradayError: '分钟服务暂不可用' });
+    expect(host.textContent).toContain('分钟行情暂不可用');
+
+    await render({ intradayData: { ...intradayResponse, count: 0, items: [] } });
     expect(host.textContent).toContain('暂无当日分钟行情');
 
-    const oneItemResponse = { ...intradayResponse, items: [earlierIntradayQuote] };
-    await render(oneItemResponse);
-    expect(host.textContent).toContain('交易中');
-    expect(host.textContent).toContain('当前仅有 1 根分钟 K 线');
-
-    await render(oneItemResponse, false, true);
+    const oneBarResponse = { ...intradayResponse, count: 1, items: [earlierIntradayBar] };
+    await render({ intradayData: oneBarResponse, intradayDelayed: true });
     expect(host.textContent).toContain('数据可能延迟');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.80');
 
-    await render({ ...oneItemResponse, marketStatus: 'closed' });
+    await render({
+      realtimeData: { ...realtimeResponse, marketStatus: 'closed' },
+      intradayData: oneBarResponse,
+    });
     expect(host.textContent).toContain('已闭市 · 最后行情');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.80');
 
     await act(async () => root.unmount());
   });
 
-  it('shows an honest deployed snapshot when daily detail is unavailable', async () => {
-    const snapshot: RealtimeStockQuote = {
+  it('uses a neutral tone for realtime-only price without a matching daily direction', async () => {
+    const snapshot: StockRealtimeQuote = {
       ...realtimeQuote,
       code: '300308',
       name: '中际旭创',
-      tradeDate: '',
-      timestamp: '',
-      open: null,
-      high: null,
-      low: null,
-      close: null,
-      snapshotPrice: 887.98,
-      sourceTime: '2026-08-11T12:05:15+08:00',
-      receivedAt: '2026-08-11T12:13:43+08:00',
-    };
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    await act(async () => root.render(
-      <ProfessionalCandlestickChart
-        stock={null}
-        stockCode="300308"
-        stockName="中际旭创"
-        intradayData={{
-          ...intradayResponse,
-          tradingDate: '2026-08-11',
-          items: [snapshot],
-        }}
-      />,
-    ));
-    const minuteButton = [...host.querySelectorAll('button')]
-      .find((button) => button.textContent?.trim() === '分钟线');
-    if (!minuteButton) throw new Error('Missing minute mode button');
-    await act(async () => minuteButton.click());
-
-    expect(host.textContent).toContain('中际旭创');
-    expect(host.textContent).toContain('300308');
-    expect(host.querySelector('.stock-price-row')?.textContent).toContain('887.98');
-    expect(host.textContent).toContain('12:05:15');
-    expect(host.textContent).toContain('接口当前仅提供实时快照，暂无分钟 K 数据');
-
-    await act(async () => root.unmount());
-  });
-
-  it('uses a neutral tone for a snapshot without a matching daily direction', async () => {
-    const snapshot: RealtimeStockQuote = {
-      ...realtimeQuote,
-      code: '300308',
-      name: '中际旭创',
-      timestamp: '',
-      open: null,
-      high: null,
-      low: null,
-      close: null,
-      snapshotPrice: 887.98,
+      price: 887.98,
       sourceTime: '2026-08-11T12:05:15+08:00',
     };
     const host = document.createElement('div');
@@ -455,13 +479,9 @@ describe('ProfessionalCandlestickChart interactions', () => {
         stock={null}
         stockCode="300308"
         stockName="中际旭创"
-        intradayData={{ ...intradayResponse, items: [snapshot] }}
+        realtimeData={{ ...realtimeResponse, tradingDate: '2026-08-11', items: [snapshot] }}
       />,
     ));
-    const minuteButton = [...host.querySelectorAll('button')]
-      .find((button) => button.textContent?.trim() === '分钟线');
-    if (!minuteButton) throw new Error('Missing minute mode button');
-    await act(async () => minuteButton.click());
 
     const price = host.querySelector('.stock-price-row > span');
     expect(price?.textContent).toBe('887.98');
@@ -470,106 +490,27 @@ describe('ProfessionalCandlestickChart interactions', () => {
     await act(async () => root.unmount());
   });
 
-  it('distinguishes a first realtime failure from a successful empty response', async () => {
+  it('replaces same-session intraday bars without creating another chart', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
-    const render = async (intradayData: RealtimeStocksResponse | null, intradayError: string | null) => {
-      await act(async () => root.render(
-        <ProfessionalCandlestickChart
-          stock={null}
-          stockCode="300308"
-          stockName="中际旭创"
-          intradayData={intradayData}
-          intradayError={intradayError}
-        />,
-      ));
-    };
-
-    await render(null, '实时服务暂不可用');
-    const minuteButton = [...host.querySelectorAll('button')]
-      .find((button) => button.textContent?.trim() === '分钟线');
-    if (!minuteButton) throw new Error('Missing minute mode button');
-    await act(async () => minuteButton.click());
-    expect(host.textContent).toContain('行情暂不可用');
-    expect(host.textContent).not.toContain('暂无当日分钟行情');
-
-    await render({ ...intradayResponse, items: [] }, null);
-    expect(host.textContent).toContain('暂无当日分钟行情');
-    expect(host.textContent).not.toContain('行情暂不可用');
-
-    await act(async () => root.unmount());
-  });
-
-  it('retains snapshot price for closed and delayed states', async () => {
-    const snapshot: RealtimeStockQuote = {
-      ...realtimeQuote,
-      timestamp: '',
-      open: null,
-      high: null,
-      low: null,
-      close: null,
-      snapshotPrice: 887.98,
-      sourceTime: '2026-08-11T12:05:15+08:00',
-    };
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-    const response = { ...intradayResponse, marketStatus: 'closed', items: [snapshot] };
 
     await act(async () => root.render(
       <ProfessionalCandlestickChart
         stock={stock}
-        stockCode="600000"
-        stockName="浦发银行"
-        intradayData={response}
+        realtimeData={realtimeResponse}
+        intradayData={intradayResponse}
+        chartMode="intraday"
+        intradayInterval="1m"
       />,
     ));
-    const minuteButton = [...host.querySelectorAll('button')]
-      .find((button) => button.textContent?.trim() === '分钟线');
-    if (!minuteButton) throw new Error('Missing minute mode button');
-    await act(async () => minuteButton.click());
-    expect(host.querySelector('.stock-price-row')?.textContent).toContain('887.98');
-    expect(host.textContent).toContain('已闭市 · 最后报价');
-
-    await act(async () => root.render(
-      <ProfessionalCandlestickChart
-        stock={stock}
-        stockCode="600000"
-        stockName="浦发银行"
-        intradayData={response}
-        intradayDelayed
-      />,
-    ));
-    expect(host.querySelector('.stock-price-row')?.textContent).toContain('887.98');
-    expect(host.textContent).toContain('数据可能延迟');
-
-    await act(async () => root.unmount());
-  });
-
-  it('replaces same-day minute data without creating another chart and restores daily controls', async () => {
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    const root = createRoot(host);
-
-    await act(async () => root.render(
-      <ProfessionalCandlestickChart stock={stock} intradayData={intradayResponse} />,
-    ));
-    const modeButton = (label: string) => {
-      const button = [...host.querySelectorAll('button')]
-        .find((item) => item.textContent?.trim() === label);
-      if (!button) throw new Error(`Missing mode button: ${label}`);
-      return button;
-    };
-    await act(async () => modeButton('分钟线').dispatchEvent(new MouseEvent('click', { bubbles: true })));
-
-    const minuteChart = chartHarness.charts[1];
+    const minuteChart = chartHarness.charts[0];
     const candleSeries = minuteChart.addSeries.mock.results[0]?.value;
-    expect(chartHarness.createChart).toHaveBeenCalledTimes(2);
+    expect(chartHarness.createChart).toHaveBeenCalledTimes(1);
     expect(chartHarness.timeScale.fitContent).toHaveBeenCalledTimes(1);
 
-    const nextQuote: RealtimeStockQuote = {
-      ...latestIntradayQuote,
+    const nextBar: StockIntradayBar = {
+      ...latestIntradayBar,
       timestamp: '2026-08-10T01:33:00Z',
       open: 10.92,
       high: 11,
@@ -580,27 +521,24 @@ describe('ProfessionalCandlestickChart interactions', () => {
     await act(async () => root.render(
       <ProfessionalCandlestickChart
         stock={stock}
-        intradayData={{ ...intradayResponse, items: [nextQuote, latestIntradayQuote, earlierIntradayQuote] }}
+        realtimeData={realtimeResponse}
+        intradayData={{
+          ...intradayResponse,
+          count: 3,
+          items: [nextBar, latestIntradayBar, earlierIntradayBar],
+        }}
+        chartMode="intraday"
+        intradayInterval="1m"
       />,
     ));
 
-    expect(chartHarness.createChart).toHaveBeenCalledTimes(2);
+    expect(chartHarness.createChart).toHaveBeenCalledTimes(1);
     expect(chartHarness.timeScale.fitContent).toHaveBeenCalledTimes(1);
     expect(candleSeries.setData).toHaveBeenLastCalledWith([
       expect.objectContaining({ time: 1_786_325_460 }),
       expect.objectContaining({ time: 1_786_325_520 }),
       expect.objectContaining({ time: 1_786_325_580, close: 10.98 }),
     ]);
-
-    await act(async () => modeButton('日线').dispatchEvent(new MouseEvent('click', { bubbles: true })));
-    expect(modeButton('日线').className).toContain('is-active');
-    expect(host.textContent).toContain('MA');
-    expect(host.textContent).toContain('MACD');
-    expect(host.querySelectorAll('.chart-navigation-controls button')).toHaveLength(4);
-    expect(chartHarness.createChart).toHaveBeenCalledTimes(3);
-    expect(chartHarness.charts[2].addSeries.mock.calls.some(
-      (call) => typeof call[2] === 'number' && call[2] > 0,
-    )).toBe(true);
 
     await act(async () => root.unmount());
   });
