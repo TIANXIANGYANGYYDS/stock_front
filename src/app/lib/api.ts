@@ -446,6 +446,9 @@ export interface RawRealtimeStockQuote {
   high?: unknown;
   low?: unknown;
   close?: unknown;
+  price?: unknown;
+  source_time?: unknown;
+  received_at?: unknown;
   volume?: unknown;
   amount?: unknown;
   provider?: unknown;
@@ -758,6 +761,9 @@ export interface RealtimeStockQuote {
   high: number | null;
   low: number | null;
   close: number | null;
+  snapshotPrice: number | null;
+  sourceTime: string;
+  receivedAt: string;
   volume: number | null;
   amount: number | null;
   provider: string;
@@ -926,18 +932,22 @@ export function mapRealtimeMarketIndex(
 
 export function mapRealtimeStockQuote(
   raw: RawRealtimeStockQuote,
+  fallbackInterval = '1m',
 ): RealtimeStockQuote {
   return {
     code: toText(raw.code),
     name: toText(raw.name, toText(raw.code, '未知股票')),
     market: toText(raw.market),
     tradeDate: toText(raw.trade_date),
-    interval: toText(raw.interval, '1m'),
+    interval: toText(raw.interval, fallbackInterval),
     timestamp: toText(raw.timestamp),
     open: toNullableNumber(raw.open),
     high: toNullableNumber(raw.high),
     low: toNullableNumber(raw.low),
     close: toNullableNumber(raw.close),
+    snapshotPrice: toNullableNumber(raw.price),
+    sourceTime: toText(raw.source_time),
+    receivedAt: toText(raw.received_at),
     volume: toNullableNumber(raw.volume),
     amount: toNullableNumber(raw.amount),
     provider: toText(raw.provider, 'unknown'),
@@ -974,11 +984,12 @@ export async function getRealtimeStocks(
     { signal },
   );
   const data = response.data ?? {};
+  const resolvedInterval = toText(data.interval, interval);
   return {
     tradingDate: toText(data.trading_date),
     marketStatus: toText(data.market_status, 'unknown'),
-    interval: toText(data.interval, interval),
-    items: (data.items ?? []).map(mapRealtimeStockQuote),
+    interval: resolvedInterval,
+    items: (data.items ?? []).map((item) => mapRealtimeStockQuote(item, resolvedInterval)),
     missingCodes: toStringArray(data.missing_codes),
   };
 }
@@ -994,11 +1005,12 @@ export async function getRealtimeStock(
     { signal },
   );
   const data = response.data ?? {};
+  const resolvedInterval = toText(data.interval, interval);
   return {
     tradingDate: toText(data.trading_date),
     marketStatus: toText(data.market_status, 'unknown'),
-    interval: toText(data.interval, interval),
-    items: (data.items ?? []).map(mapRealtimeStockQuote),
+    interval: resolvedInterval,
+    items: (data.items ?? []).map((item) => mapRealtimeStockQuote(item, resolvedInterval)),
     missingCodes: toStringArray(data.missing_codes),
   };
 }

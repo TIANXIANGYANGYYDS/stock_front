@@ -25,7 +25,11 @@ import type {
   RealtimeStocksResponse,
   SectorStock,
 } from '../../lib/api';
-import { formatShanghaiTime, selectIntradayQuotes } from '../../lib/realtime-format';
+import {
+  formatShanghaiTime,
+  selectIntradayQuotes,
+  selectLatestStockSnapshot,
+} from '../../lib/realtime-format';
 import {
   buildIndicatorData,
   buildMovingAverageData,
@@ -46,10 +50,13 @@ import { IntradayCandlestickChart } from './IntradayCandlestickChart';
 
 interface ProfessionalCandlestickChartProps {
   stock: SectorStock | null;
+  stockCode?: string;
+  stockName?: string;
   loading?: boolean;
   intradayData?: RealtimeStocksResponse | null;
   intradayLoading?: boolean;
   intradayDelayed?: boolean;
+  intradayError?: string | null;
   onActiveDateChange?: (date: string | null) => void;
 }
 
@@ -157,10 +164,13 @@ function sameIndicators(
 
 export function ProfessionalCandlestickChart({
   stock,
+  stockCode = '',
+  stockName = '',
   loading = false,
   intradayData = null,
   intradayLoading = false,
   intradayDelayed = false,
+  intradayError = null,
   onActiveDateChange,
 }: ProfessionalCandlestickChartProps) {
   const shellRef = useRef<HTMLDivElement>(null);
@@ -174,10 +184,17 @@ export function ProfessionalCandlestickChart({
   const intradayQuotes = useMemo(
     () => selectIntradayQuotes(
       intradayData?.items ?? [],
-      stock?.code ?? '',
+      stockCode || stock?.code || '',
       intradayData?.tradingDate,
     ),
-    [intradayData, stock?.code],
+    [intradayData, stock?.code, stockCode],
+  );
+  const latestSnapshot = useMemo(
+    () => selectLatestStockSnapshot(
+      intradayData?.items ?? [],
+      stockCode || stock?.code || '',
+    ),
+    [intradayData, stock?.code, stockCode],
   );
   const availableMaKeys = useMemo(() => getAvailableMaKeys(bars), [bars]);
   const availableIndicators = useMemo(() => getAvailableChartIndicators(bars), [bars]);
@@ -514,10 +531,23 @@ export function ProfessionalCandlestickChart({
     ? (latestIntradayQuote.close as number) >= (latestIntradayQuote.open as number)
     : (legend?.changePercent ?? stock?.changePercent ?? 0) >= 0;
   const displayedPrice = isIntradayMode
-    ? latestIntradayQuote?.close
+    ? latestIntradayQuote?.close ?? latestSnapshot?.snapshotPrice
     : legend?.close ?? stock?.close;
   const minuteState = intradayQuotes.length === 0
-    ? intradayLoading ? '分钟行情加载中' : '暂无当日分钟行情'
+    ? intradayLoading
+      ? '分钟行情加载中'
+      : !intradayData && (intradayError || intradayDelayed)
+        ? '行情暂不可用'
+        : latestSnapshot
+          ? [
+              intradayData?.marketStatus === 'closed'
+                ? '已闭市 · 最后报价'
+                : intradayData?.marketStatus === 'open'
+                  ? '交易中'
+                  : '状态未知',
+              intradayDelayed ? '数据可能延迟' : '',
+            ].filter(Boolean).join(' · ')
+          : '暂无当日分钟行情'
     : intradayDelayed
       ? '数据可能延迟'
       : intradayData?.marketStatus === 'closed'
@@ -561,8 +591,8 @@ export function ProfessionalCandlestickChart({
         <div className="stock-quote-head">
         <div>
           <div className="stock-identity">
-            <strong>{stock?.name || '等待选择股票'}</strong>
-            <span>{stock?.code || '--'}</span>
+            <strong>{stockName || stock?.name || latestSnapshot?.name || '等待选择股票'}</strong>
+            <span>{stockCode || stock?.code || latestSnapshot?.code || '--'}</span>
             {(isIntradayMode
               ? intradayData?.tradingDate
               : legend?.time || stock?.tradeDate) && (
@@ -587,6 +617,8 @@ export function ProfessionalCandlestickChart({
             {isIntradayMode
               ? latestIntradayQuote
                 ? `分钟线 1m ${formatShanghaiTime(latestIntradayQuote.timestamp)} · ${minuteState}`
+                : latestSnapshot
+                  ? `实时快照 ${formatShanghaiTime(latestSnapshot.sourceTime || latestSnapshot.receivedAt)} · ${minuteState}`
                 : minuteState
               : showingLatestBar ? '日线 · 最新交易日' : '历史 K 线'}
             {isIntradayMode && intradayQuotes.length === 1 && (
@@ -689,13 +721,15 @@ export function ProfessionalCandlestickChart({
           intradayQuotes.length > 0 ? (
             <IntradayCandlestickChart
               quotes={intradayQuotes}
-              stockCode={stock?.code ?? ''}
+              stockCode={stockCode || stock?.code || ''}
               tradingDate={intradayData?.tradingDate}
             />
           ) : (
             <div className="terminal-empty">
               {intradayLoading && <span className="loading-pulse" />}
-              {minuteState}
+              {latestSnapshot
+                ? '接口当前仅提供实时快照，暂无分钟 K 数据'
+                : minuteState}
             </div>
           )
         ) : loading ? (

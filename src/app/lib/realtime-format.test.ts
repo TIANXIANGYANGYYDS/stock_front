@@ -6,6 +6,7 @@ import {
   mergeRealtimeStockItems,
   orderMarketIndices,
   quoteTone,
+  selectLatestStockSnapshot,
   selectIntradayQuotes,
 } from './realtime-format';
 
@@ -42,6 +43,9 @@ function stockQuote(code: string, close: number | null, amount: number | null): 
     high: 11,
     low: 9,
     close,
+    snapshotPrice: null,
+    sourceTime: '',
+    receivedAt: '',
     volume: 100,
     amount,
     provider: 'TENCENT',
@@ -63,6 +67,9 @@ function intradayQuote(
     high: 11,
     low: 9,
     close: 10.5,
+    snapshotPrice: null,
+    sourceTime: '',
+    receivedAt: '',
     volume: 100,
     amount: 1000,
     provider: 'TENCENT',
@@ -144,6 +151,67 @@ describe('batch realtime stock merging', () => {
 
     expect(mergeRealtimeStockItems(daily, [stockQuote('600519', null, null)]))
       .toEqual(daily);
+  });
+
+  it('uses a finite deployed snapshot price while preserving the daily percentage', () => {
+    const daily: StockListItem[] = [{
+      code: '300308',
+      name: '中际旭创',
+      tradeDate: '2026-08-11',
+      close: 880,
+      changePercent: 2.34,
+      amount: 20,
+    }];
+    const snapshot = stockQuote('300308', null, 22644016044);
+    snapshot.snapshotPrice = 887.98;
+
+    expect(mergeRealtimeStockItems(daily, [snapshot])).toEqual([{
+      ...daily[0],
+      close: 887.98,
+      amount: 22644016044,
+    }]);
+  });
+
+  it('prefers a finite true-minute close when a later item is only a snapshot', () => {
+    const daily: StockListItem[] = [{
+      code: '300308', name: '中际旭创', tradeDate: '2026-08-11',
+      close: 880, changePercent: 2.34, amount: 20,
+    }];
+    const minute = stockQuote('300308', 886.5, 100);
+    const snapshot = stockQuote('300308', null, 200);
+    snapshot.snapshotPrice = 887.98;
+
+    expect(mergeRealtimeStockItems(daily, [minute, snapshot])[0]).toMatchObject({
+      close: 886.5,
+      changePercent: 2.34,
+      amount: 200,
+    });
+  });
+});
+
+describe('latest stock snapshot selection', () => {
+  it('selects the latest finite snapshot for one code without mutating the response items', () => {
+    const earlier = stockQuote('300308', null, null);
+    earlier.snapshotPrice = 880;
+    earlier.sourceTime = '2026-08-11T12:00:00+08:00';
+    const latest = stockQuote('300308', null, null);
+    latest.snapshotPrice = 887.98;
+    latest.sourceTime = '';
+    latest.receivedAt = '2026-08-11T12:13:43+08:00';
+    const items = [
+      latest,
+      stockQuote('000001', null, null),
+      { ...earlier, snapshotPrice: Number.POSITIVE_INFINITY },
+      earlier,
+    ];
+
+    expect(selectLatestStockSnapshot(items, '300308')).toBe(latest);
+    expect(items).toEqual([
+      latest,
+      stockQuote('000001', null, null),
+      { ...earlier, snapshotPrice: Number.POSITIVE_INFINITY },
+      earlier,
+    ]);
   });
 });
 

@@ -109,7 +109,29 @@ export function mergeRealtimeStockItems(
   dailyItems: StockListItem[],
   realtimeItems: RealtimeStockQuote[],
 ): StockListItem[] {
-  const byCode = new Map(realtimeItems.map((item) => [item.code, item]));
+  const byCode = new Map<string, {
+    close: number | null;
+    snapshotPrice: number | null;
+    amount: number | null;
+  }>();
+  for (const item of realtimeItems) {
+    const current = byCode.get(item.code) ?? {
+      close: null,
+      snapshotPrice: null,
+      amount: null,
+    };
+    byCode.set(item.code, {
+      close: typeof item.close === 'number' && Number.isFinite(item.close)
+        ? item.close
+        : current.close,
+      snapshotPrice: typeof item.snapshotPrice === 'number' && Number.isFinite(item.snapshotPrice)
+        ? item.snapshotPrice
+        : current.snapshotPrice,
+      amount: typeof item.amount === 'number' && Number.isFinite(item.amount)
+        ? item.amount
+        : current.amount,
+    });
+  }
   return dailyItems.map((item) => {
     const realtime = byCode.get(item.code);
     if (!realtime) return item;
@@ -117,12 +139,31 @@ export function mergeRealtimeStockItems(
       ...item,
       close: typeof realtime.close === 'number' && Number.isFinite(realtime.close)
         ? realtime.close
-        : item.close,
+        : typeof realtime.snapshotPrice === 'number' && Number.isFinite(realtime.snapshotPrice)
+          ? realtime.snapshotPrice
+          : item.close,
       amount: typeof realtime.amount === 'number' && Number.isFinite(realtime.amount)
         ? realtime.amount
         : item.amount,
     };
   });
+}
+
+export function selectLatestStockSnapshot(
+  items: RealtimeStockQuote[],
+  code: string,
+): RealtimeStockQuote | null {
+  return items.reduce<RealtimeStockQuote | null>((latest, item) => {
+    if (item.code !== code
+      || typeof item.snapshotPrice !== 'number'
+      || !Number.isFinite(item.snapshotPrice)) {
+      return latest;
+    }
+    if (!latest) return item;
+    const itemTime = Date.parse(item.sourceTime) || Date.parse(item.receivedAt) || 0;
+    const latestTime = Date.parse(latest.sourceTime) || Date.parse(latest.receivedAt) || 0;
+    return itemTime >= latestTime ? item : latest;
+  }, null);
 }
 
 export function selectIntradayQuotes(

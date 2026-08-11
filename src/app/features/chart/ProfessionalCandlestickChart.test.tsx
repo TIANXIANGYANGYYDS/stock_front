@@ -183,6 +183,9 @@ const realtimeQuote: RealtimeStockQuote = {
   high: 10.9,
   low: 10.65,
   close: 10.88,
+  snapshotPrice: null,
+  sourceTime: '',
+  receivedAt: '',
   volume: 1000,
   amount: 10880,
   provider: 'TENCENT',
@@ -331,6 +334,128 @@ describe('ProfessionalCandlestickChart interactions', () => {
 
     await render({ ...oneItemResponse, marketStatus: 'closed' });
     expect(host.textContent).toContain('已闭市 · 最后行情');
+
+    await act(async () => root.unmount());
+  });
+
+  it('shows an honest deployed snapshot when daily detail is unavailable', async () => {
+    const snapshot: RealtimeStockQuote = {
+      ...realtimeQuote,
+      code: '300308',
+      name: '中际旭创',
+      tradeDate: '',
+      timestamp: '',
+      open: null,
+      high: null,
+      low: null,
+      close: null,
+      snapshotPrice: 887.98,
+      sourceTime: '2026-08-11T12:05:15+08:00',
+      receivedAt: '2026-08-11T12:13:43+08:00',
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={null}
+        stockCode="300308"
+        stockName="中际旭创"
+        intradayData={{
+          ...intradayResponse,
+          tradingDate: '2026-08-11',
+          items: [snapshot],
+        }}
+      />,
+    ));
+    const minuteButton = [...host.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === '分钟线');
+    if (!minuteButton) throw new Error('Missing minute mode button');
+    await act(async () => minuteButton.click());
+
+    expect(host.textContent).toContain('中际旭创');
+    expect(host.textContent).toContain('300308');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('887.98');
+    expect(host.textContent).toContain('12:05:15');
+    expect(host.textContent).toContain('接口当前仅提供实时快照，暂无分钟 K 数据');
+
+    await act(async () => root.unmount());
+  });
+
+  it('distinguishes a first realtime failure from a successful empty response', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const render = async (intradayData: RealtimeStocksResponse | null, intradayError: string | null) => {
+      await act(async () => root.render(
+        <ProfessionalCandlestickChart
+          stock={null}
+          stockCode="300308"
+          stockName="中际旭创"
+          intradayData={intradayData}
+          intradayError={intradayError}
+        />,
+      ));
+    };
+
+    await render(null, '实时服务暂不可用');
+    const minuteButton = [...host.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === '分钟线');
+    if (!minuteButton) throw new Error('Missing minute mode button');
+    await act(async () => minuteButton.click());
+    expect(host.textContent).toContain('行情暂不可用');
+    expect(host.textContent).not.toContain('暂无当日分钟行情');
+
+    await render({ ...intradayResponse, items: [] }, null);
+    expect(host.textContent).toContain('暂无当日分钟行情');
+    expect(host.textContent).not.toContain('行情暂不可用');
+
+    await act(async () => root.unmount());
+  });
+
+  it('retains snapshot price for closed and delayed states', async () => {
+    const snapshot: RealtimeStockQuote = {
+      ...realtimeQuote,
+      timestamp: '',
+      open: null,
+      high: null,
+      low: null,
+      close: null,
+      snapshotPrice: 887.98,
+      sourceTime: '2026-08-11T12:05:15+08:00',
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const response = { ...intradayResponse, marketStatus: 'closed', items: [snapshot] };
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        stockCode="600000"
+        stockName="浦发银行"
+        intradayData={response}
+      />,
+    ));
+    const minuteButton = [...host.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === '分钟线');
+    if (!minuteButton) throw new Error('Missing minute mode button');
+    await act(async () => minuteButton.click());
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('887.98');
+    expect(host.textContent).toContain('已闭市 · 最后报价');
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        stockCode="600000"
+        stockName="浦发银行"
+        intradayData={response}
+        intradayDelayed
+      />,
+    ));
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('887.98');
+    expect(host.textContent).toContain('数据可能延迟');
 
     await act(async () => root.unmount());
   });

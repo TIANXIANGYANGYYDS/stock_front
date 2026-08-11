@@ -79,6 +79,39 @@ describe('realtime quote mapping', () => {
     expect(mapped).not.toHaveProperty('change');
     expect(mapped).not.toHaveProperty('changePercent');
   });
+
+  it('maps the deployed stock snapshot without inventing minute OHLC or timestamp fields', () => {
+    const mapped = mapRealtimeStockQuote({
+      code: '300308',
+      name: '中际旭创',
+      market: 'SZ',
+      price: 887.98,
+      volume: 25743300,
+      amount: 22644016044,
+      source_time: '2026-08-11T12:05:15+08:00',
+      received_at: '2026-08-11T12:13:43+08:00',
+      provider: 'tencent',
+    });
+
+    expect(mapped).toEqual({
+      code: '300308',
+      name: '中际旭创',
+      market: 'SZ',
+      tradeDate: '',
+      interval: '1m',
+      timestamp: '',
+      open: null,
+      high: null,
+      low: null,
+      close: null,
+      snapshotPrice: 887.98,
+      sourceTime: '2026-08-11T12:05:15+08:00',
+      receivedAt: '2026-08-11T12:13:43+08:00',
+      volume: 25743300,
+      amount: 22644016044,
+      provider: 'tencent',
+    });
+  });
 });
 
 describe('realtime quote requests', () => {
@@ -129,7 +162,11 @@ describe('realtime quote requests', () => {
       cacheAgeMs: 0,
     });
     expect(batch.missingCodes).toEqual(['000001']);
-    expect(single.items[0]).toMatchObject({ code: '600519/path', close: 1348.86 });
+    expect(single.items[0]).toMatchObject({
+      code: '600519/path',
+      close: 1348.86,
+      interval: '5m',
+    });
 
     expect(String(fetchMock.mock.calls[0][0])).toBe(
       '/backend-api/api/v1/market/indices/realtime',

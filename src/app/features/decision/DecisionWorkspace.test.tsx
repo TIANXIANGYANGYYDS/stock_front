@@ -54,15 +54,22 @@ vi.mock('./StockNavigator', () => ({
 
 vi.mock('../chart/ProfessionalCandlestickChart', () => ({
   ProfessionalCandlestickChart: ({
+  stockCode,
+  stockName,
   intradayData,
   intradayLoading,
   intradayDelayed,
+  intradayError,
 }: {
+    stockCode?: string;
+    stockName?: string;
     intradayData?: { items: Array<{ code: string; timestamp: string; close: number | null }> } | null;
     intradayLoading?: boolean;
     intradayDelayed?: boolean;
+    intradayError?: string | null;
   }) => (
     <section data-testid="chart">
+      身份 {stockCode}:{stockName};错误:{intradayError};
       分钟项 {intradayData?.items.map((item) => `${item.timestamp}:${item.close}`).join('|')}
       :{String(intradayLoading)}:{String(intradayDelayed)}
     </section>
@@ -227,6 +234,30 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     expect(host.textContent).toContain('loading:true');
   });
 
+  it('passes selected list identity and realtime error while daily detail is independently pending', async () => {
+    vi.useFakeTimers();
+    apiMocks.getStockList.mockResolvedValue([{
+      code: '300308', name: '中际旭创', tradeDate: '2026-08-11',
+      close: 880, changePercent: 2.34, amount: 20,
+    }]);
+    apiMocks.getStockDetail.mockReturnValue(new Promise(() => undefined));
+    quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
+    quoteMocks.useRealtimeStock.mockReturnValue({
+      ...pollingState(null),
+      delayed: true,
+      error: '实时服务暂不可用',
+    });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+
+    await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-08-11" />));
+    await act(async () => vi.advanceTimersByTime(180));
+    await act(async () => await Promise.resolve());
+
+    expect(host.textContent).toContain('身份 300308:中际旭创;错误:实时服务暂不可用');
+  });
+
   it('aborts the previous list request and sends one trimmed query after 180ms', async () => {
     vi.useFakeTimers();
     const initial = deferred<never[]>();
@@ -309,8 +340,7 @@ describe('DecisionWorkspace realtime stock coordination', () => {
 
   it('does not show an error or clear retained results for an AbortError rejection', async () => {
     vi.useFakeTimers();
-    const abortError = new Error('request cancelled');
-    abortError.name = 'AbortError';
+    const abortError = new DOMException('request cancelled', 'AbortError');
     apiMocks.getStockList
       .mockResolvedValueOnce([{
         code: '000001', name: '平安银行', tradeDate: '2026-08-10',

@@ -21,7 +21,10 @@ function errorText(error: unknown, fallback: string): string {
 }
 
 function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === 'AbortError';
+  return typeof error === 'object'
+    && error !== null
+    && 'name' in error
+    && error.name === 'AbortError';
 }
 
 export function DecisionWorkspace({
@@ -43,6 +46,7 @@ export function DecisionWorkspace({
     () => mergeRealtimeStockItems(stockItems, batchRealtime.data?.items ?? []),
     [batchRealtime.data?.items, stockItems],
   );
+  const selectedListItem = stockItems.find((item) => item.code === selectedStockCode) ?? null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -115,10 +119,13 @@ export function DecisionWorkspace({
       />
       <ProfessionalCandlestickChart
         stock={selectedStock}
+        stockCode={selectedStockCode}
+        stockName={selectedListItem?.name ?? ''}
         loading={detailLoading}
         intradayData={selectedRealtime.data}
         intradayLoading={selectedRealtime.initialLoading}
         intradayDelayed={selectedRealtime.delayed}
+        intradayError={selectedRealtime.error}
         onActiveDateChange={setActiveDate}
       />
       <DecisionPanel
