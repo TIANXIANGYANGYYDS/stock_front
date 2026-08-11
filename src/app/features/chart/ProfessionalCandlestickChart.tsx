@@ -574,10 +574,12 @@ export function ProfessionalCandlestickChart({
       ? dailyStock?.changePercent ?? legend?.changePercent
       : legend?.changePercent
     : null;
-  const priceTone = isIntradayMode && latestIntradayBar
-    ? toneFromDirection(
-        (latestIntradayBar.close as number) - (latestIntradayBar.open as number),
-      )
+  const priceTone = isIntradayMode
+    ? latestIntradayBar
+      ? toneFromDirection(
+          (latestIntradayBar.close as number) - (latestIntradayBar.open as number),
+        )
+      : 'flat'
     : toneFromDirection(dailyDirection);
   const displayedPrice = isIntradayMode
     ? latestIntradayBar?.close ?? selectedRealtime?.price
@@ -587,13 +589,17 @@ export function ProfessionalCandlestickChart({
   const realtimeIsDelayed = realtimeDelayed
     || Boolean(realtimeError)
     || realtimeData?.marketStatus === 'stale';
+  const intradayIsDelayed = realtimeData?.marketStatus === 'stale'
+    || (Boolean(intradayData) && (intradayDelayed || Boolean(intradayError)));
   const minuteState = intradayBars.length === 0
     ? intradayLoading
       ? '分钟行情加载中'
-      : !intradayData && intradayError
-        ? '分钟行情暂不可用'
-        : '暂无当日分钟行情'
-    : intradayDelayed || Boolean(intradayError)
+      : intradayIsDelayed
+        ? '数据可能延迟'
+        : !intradayData && intradayError
+          ? '分钟行情暂不可用'
+          : '暂无当日分钟行情'
+    : intradayIsDelayed
       ? '数据可能延迟'
       : realtimeData?.marketStatus === 'closed'
         ? '已闭市 · 最后行情'
@@ -677,7 +683,7 @@ export function ProfessionalCandlestickChart({
               </small>
             )}
           </div>
-          <div className={`stock-live-state${(isIntradayMode ? intradayDelayed || intradayError : realtimeIsDelayed) ? ' is-delayed' : ''}`}>
+          <div className={`stock-live-state${(isIntradayMode ? intradayIsDelayed : realtimeIsDelayed) ? ' is-delayed' : ''}`}>
             {isIntradayMode
               ? latestIntradayBar
                 ? `分钟线 ${intradayInterval} ${formatShanghaiTime(latestIntradayBar.timestamp)} · ${minuteState}`

@@ -462,6 +462,41 @@ describe('ProfessionalCandlestickChart interactions', () => {
     await act(async () => root.unmount());
   });
 
+  it('surfaces delayed state for retained empty intraday results and stale realtime', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const emptyIntraday = { ...intradayResponse, count: 0, items: [] };
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        realtimeData={realtimeResponse}
+        intradayData={emptyIntraday}
+        intradayDelayed
+        intradayError="刷新失败"
+        chartMode="intraday"
+        intradayInterval="1m"
+      />,
+    ));
+    expect(host.querySelector('.stock-live-state')?.textContent).toContain('数据可能延迟');
+    expect(host.querySelector('.stock-live-state')?.className).toContain('is-delayed');
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        realtimeData={{ ...realtimeResponse, marketStatus: 'stale' }}
+        intradayData={emptyIntraday}
+        chartMode="intraday"
+        intradayInterval="1m"
+      />,
+    ));
+    expect(host.querySelector('.stock-live-state')?.textContent).toContain('数据可能延迟');
+    expect(host.querySelector('.stock-live-state')?.className).toContain('is-delayed');
+
+    await act(async () => root.unmount());
+  });
+
   it('uses a neutral tone for realtime-only price without a matching daily direction', async () => {
     const snapshot: StockRealtimeQuote = {
       ...realtimeQuote,
@@ -486,6 +521,29 @@ describe('ProfessionalCandlestickChart interactions', () => {
     const price = host.querySelector('.stock-price-row > span');
     expect(price?.textContent).toBe('887.98');
     expect(price?.className).toBe('market-flat');
+
+    await act(async () => root.unmount());
+  });
+
+  it('keeps an intraday realtime fallback neutral when no minute bar is available', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        realtimeData={realtimeResponse}
+        intradayData={{ ...intradayResponse, count: 0, items: [] }}
+        chartMode="intraday"
+        intradayInterval="1m"
+      />,
+    ));
+
+    const price = host.querySelector('.stock-price-row > span');
+    expect(price?.textContent).toBe('11.23');
+    expect(price?.className).toBe('market-flat');
+    expect(host.textContent).not.toContain('日线涨跌');
 
     await act(async () => root.unmount());
   });
