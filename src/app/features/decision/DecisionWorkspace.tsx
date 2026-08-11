@@ -20,6 +20,10 @@ function errorText(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
 export function DecisionWorkspace({
   preferredTradeDate,
 }: DecisionWorkspaceProps) {
@@ -32,6 +36,7 @@ export function DecisionWorkspace({
   const [detailLoading, setDetailLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const normalizedQuery = query.trim();
   const batchRealtime = useRealtimeStocks(stockItems.map((item) => item.code));
   const selectedRealtime = useRealtimeStock(selectedStockCode);
   const displayedStockItems = useMemo(
@@ -40,34 +45,32 @@ export function DecisionWorkspace({
   );
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     setListLoading(true);
     setListError(null);
     const timer = window.setTimeout(() => {
-      void getStockList(preferredTradeDate, query)
+      void getStockList(preferredTradeDate, normalizedQuery, controller.signal)
         .then((items) => {
-          if (cancelled) return;
+          if (controller.signal.aborted) return;
           setStockItems(items);
           setSelectedStockCode((current) => (
             items.some((item) => item.code === current) ? current : items[0]?.code || ''
           ));
         })
         .catch((error: unknown) => {
-          if (cancelled) return;
-          setStockItems([]);
-          setSelectedStockCode('');
+          if (controller.signal.aborted || isAbortError(error)) return;
           setListError(errorText(error, '股票列表加载失败'));
         })
         .finally(() => {
-          if (!cancelled) setListLoading(false);
+          if (!controller.signal.aborted) setListLoading(false);
         });
-    }, query.trim() ? 180 : 0);
+    }, 180);
 
     return () => {
-      cancelled = true;
       window.clearTimeout(timer);
+      controller.abort();
     };
-  }, [preferredTradeDate, query]);
+  }, [preferredTradeDate, normalizedQuery]);
 
   useEffect(() => {
     setActiveDate(null);
@@ -76,26 +79,26 @@ export function DecisionWorkspace({
       return;
     }
 
-    let cancelled = false;
+    const controller = new AbortController();
     setDetailLoading(true);
     setDetailError(null);
 
     void (async () => {
       try {
-        const response = await getStockDetail(selectedStockCode, preferredTradeDate);
-        if (cancelled) return;
+        const response = await getStockDetail(selectedStockCode, preferredTradeDate, controller.signal);
+        if (controller.signal.aborted) return;
         setSelectedStock(response);
       } catch (error) {
-        if (cancelled) return;
+        if (controller.signal.aborted || isAbortError(error)) return;
         setSelectedStock(null);
         setDetailError(errorText(error, '个股 K 线加载失败'));
       } finally {
-        if (!cancelled) setDetailLoading(false);
+        if (!controller.signal.aborted) setDetailLoading(false);
       }
     })();
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [preferredTradeDate, selectedStockCode]);
 

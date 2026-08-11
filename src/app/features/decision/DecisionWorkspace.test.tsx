@@ -20,12 +20,28 @@ vi.mock('../../hooks/useRealtimeQuotes', () => quoteMocks);
 vi.mock('./StockNavigator', () => ({
   StockNavigator: ({
     items,
+    query,
+    selectedCode,
+    loading,
+    error,
+    onQueryChange,
     onSelect,
   }: {
     items: Array<{ code: string; close: number | null; changePercent: number | null }>;
+    query: string;
+    selectedCode: string;
+    loading: boolean;
+    error: string | null;
+    onQueryChange: (query: string) => void;
     onSelect: (code: string) => void;
   }) => (
     <section data-testid="stock-navigator">
+      <input
+        aria-label="搜索股票"
+        value={query}
+        onChange={(event) => onQueryChange(event.target.value)}
+      />
+      <output>{`loading:${loading};error:${error};selected:${selectedCode}`}</output>
       {items.map((item) => (
         <span key={item.code}>
           {item.code}:{item.close}:{item.changePercent}
@@ -74,6 +90,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
   Object.values(apiMocks).forEach((mock) => mock.mockReset());
   Object.values(quoteMocks).forEach((mock) => mock.mockReset());
+  vi.useRealTimers();
 });
 
 function pollingState(data: unknown) {
@@ -97,8 +114,27 @@ async function flush(): Promise<void> {
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function setSearchValue(host: HTMLElement, value: string): void {
+  const input = host.querySelector('input');
+  if (!input) throw new Error('Missing stock search input');
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 describe('DecisionWorkspace realtime stock coordination', () => {
   it('merges batch prices, preserves daily percentages, and sends complete selected intraday data only to the chart', async () => {
+    vi.useFakeTimers();
     apiMocks.getStockList.mockResolvedValue([
       {
         code: '600519', name: '贵州茅台', tradeDate: '2026-08-10',
@@ -144,7 +180,8 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     document.body.appendChild(host);
     root = createRoot(host);
     await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-08-10" />));
-    await flush();
+    await act(async () => vi.advanceTimersByTime(180));
+    await act(async () => await Promise.resolve());
 
     expect(quoteMocks.useRealtimeStocks).toHaveBeenLastCalledWith(['600519', '000001']);
     expect(host.textContent).toContain('600519:1348.86:1.2');
@@ -157,9 +194,145 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     );
     if (!select) throw new Error('Missing stock selection button');
     await act(async () => select.click());
-    await flush();
+    await act(async () => await Promise.resolve());
 
     expect(quoteMocks.useRealtimeStock).toHaveBeenLastCalledWith('000001');
     expect(host.textContent).toContain('分钟项 :false:false');
+  });
+
+  it('keeps a successful list and selection visible while the next query is pending', async () => {
+    vi.useFakeTimers();
+    const replacement = deferred<Array<{ code: string; name: string; tradeDate: string; close: number; changePercent: number; amount: number }>>();
+    apiMocks.getStockList
+      .mockResolvedValueOnce([{
+        code: '000001', name: '平安银行', tradeDate: '2026-08-10',
+        close: 12, changePercent: 1.1, amount: 10,
+      }])
+      .mockReturnValueOnce(replacement.promise);
+    apiMocks.getStockDetail.mockResolvedValue(null);
+    quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
+    quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+
+    await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-08-10" />));
+    await act(async () => vi.advanceTimersByTime(180));
+    await act(async () => await Promise.resolve());
+    await act(async () => setSearchValue(host, '平安'));
+    await act(async () => vi.advanceTimersByTime(180));
+
+    expect(host.textContent).toContain('000001:12:1.1');
+    expect(host.textContent).toContain('selected:000001');
+    expect(host.textContent).toContain('loading:true');
+  });
+
+  it('aborts the previous list request and sends one trimmed query after 180ms', async () => {
+    vi.useFakeTimers();
+    const initial = deferred<never[]>();
+    const replacement = deferred<never[]>();
+    apiMocks.getStockList.mockReturnValueOnce(initial.promise).mockReturnValueOnce(replacement.promise);
+    quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
+    quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+
+    await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-08-10" />));
+    await act(async () => vi.advanceTimersByTime(180));
+    await act(async () => setSearchValue(host, ' 平安 '));
+
+    const firstSignal = apiMocks.getStockList.mock.calls[0]?.[2] as AbortSignal;
+    expect(firstSignal.aborted).toBe(true);
+    expect(apiMocks.getStockList).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTime(179));
+    expect(apiMocks.getStockList).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTime(1));
+
+    expect(apiMocks.getStockList).toHaveBeenLastCalledWith(
+      '2026-08-10',
+      '平安',
+      expect.any(AbortSignal),
+    );
+  });
+
+  it('does not repeat a request when only trailing whitespace changes', async () => {
+    vi.useFakeTimers();
+    apiMocks.getStockList.mockResolvedValue([]);
+    quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
+    quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+
+    await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-08-10" />));
+    await act(async () => setSearchValue(host, '平安 '));
+    await act(async () => vi.advanceTimersByTime(180));
+    await act(async () => await Promise.resolve());
+    await act(async () => setSearchValue(host, '平安   '));
+    await act(async () => vi.advanceTimersByTime(180));
+
+    expect(apiMocks.getStockList).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getStockList).toHaveBeenCalledWith(
+      '2026-08-10',
+      '平安',
+      expect.any(AbortSignal),
+    );
+  });
+
+  it('retains the last successful list and selection after a non-abort failure', async () => {
+    vi.useFakeTimers();
+    apiMocks.getStockList
+      .mockResolvedValueOnce([{
+        code: '000001', name: '平安银行', tradeDate: '2026-08-10',
+        close: 12, changePercent: 1.1, amount: 10,
+      }])
+      .mockRejectedValueOnce(new Error('网络异常'));
+    apiMocks.getStockDetail.mockResolvedValue(null);
+    quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
+    quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+
+    await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-08-10" />));
+    await act(async () => vi.advanceTimersByTime(180));
+    await act(async () => await Promise.resolve());
+    await act(async () => setSearchValue(host, '平安'));
+    await act(async () => vi.advanceTimersByTime(180));
+    await act(async () => await Promise.resolve());
+
+    expect(host.textContent).toContain('000001:12:1.1');
+    expect(host.textContent).toContain('selected:000001');
+    expect(host.textContent).toContain('error:网络异常');
+  });
+
+  it('does not show an error or clear retained results for an AbortError rejection', async () => {
+    vi.useFakeTimers();
+    const abortError = new Error('request cancelled');
+    abortError.name = 'AbortError';
+    apiMocks.getStockList
+      .mockResolvedValueOnce([{
+        code: '000001', name: '平安银行', tradeDate: '2026-08-10',
+        close: 12, changePercent: 1.1, amount: 10,
+      }])
+      .mockRejectedValueOnce(abortError);
+    apiMocks.getStockDetail.mockResolvedValue(null);
+    quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
+    quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+
+    await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-08-10" />));
+    await act(async () => vi.advanceTimersByTime(180));
+    await act(async () => await Promise.resolve());
+    await act(async () => setSearchValue(host, '平安'));
+    await act(async () => vi.advanceTimersByTime(180));
+    await act(async () => await Promise.resolve());
+
+    expect(host.textContent).toContain('000001:12:1.1');
+    expect(host.textContent).toContain('selected:000001');
+    expect(host.textContent).toContain('error:null');
   });
 });

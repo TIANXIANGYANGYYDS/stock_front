@@ -62,4 +62,54 @@ describe('StockNavigator', () => {
 
     await act(async () => root.unmount());
   });
+
+  it('keeps prior stock buttons visible while a replacement query is loading', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <StockNavigator
+        items={items}
+        query="平安"
+        selectedCode="000001"
+        loading
+        error={null}
+        onQueryChange={() => undefined}
+        onSelect={() => undefined}
+      />,
+    ));
+
+    expect(host.textContent).toContain('查询中');
+    expect([...host.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
+      expect.stringContaining('平安银行'),
+      expect.stringContaining('浦发银行'),
+    ]);
+
+    await act(async () => root.unmount());
+  });
+
+  it('shows the retained list and failure notice when a replacement query fails', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <StockNavigator
+        items={items}
+        query="平安"
+        selectedCode="000001"
+        loading={false}
+        error="网络异常"
+        onQueryChange={() => undefined}
+        onSelect={() => undefined}
+      />,
+    ));
+
+    expect(host.textContent).toContain('查询失败，保留上次结果');
+    expect(host.textContent).toContain('平安银行');
+    expect(host.textContent).toContain('浦发银行');
+
+    await act(async () => root.unmount());
+  });
 });

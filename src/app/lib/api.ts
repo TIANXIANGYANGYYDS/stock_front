@@ -1703,6 +1703,7 @@ function buildSectorStock(
 export async function getStockList(
   tradeDate: string,
   keyword = '',
+  signal?: AbortSignal,
 ): Promise<StockListItem[]> {
   const normalizedKeyword = keyword.trim();
   if (normalizedKeyword) {
@@ -1711,7 +1712,7 @@ export async function getStockList(
       page_size: 50,
       keyword: normalizedKeyword,
       adjust: 'qfq',
-    });
+    }, { signal });
     return (response.items ?? []).map((item) => ({
       code: toText(item.code),
       name: toText(item.name, toText(item.code, '未知股票')),
@@ -1725,6 +1726,7 @@ export async function getStockList(
   const response = await requestJson<PagedResponse<RawStockProjectDailyBar>>(
     `/api/v1/stock-daily/${encodeURIComponent(tradeDate)}`,
     { page: 1, page_size: 50, adjust: 'qfq', sort_by: 'amount', sort_order: 'desc' },
+    { signal },
   );
   return (response.items ?? []).map((item) => ({
     code: toText(item.code),
@@ -1736,10 +1738,15 @@ export async function getStockList(
   }));
 }
 
-export async function getStockDetail(code: string, tradeDate: string): Promise<SectorStock | null> {
+export async function getStockDetail(
+  code: string,
+  tradeDate: string,
+  signal?: AbortSignal,
+): Promise<SectorStock | null> {
   const response = await requestJson<PagedResponse<RawStockProjectDailyBar>>(
     `/api/v1/stocks/${encodeURIComponent(code)}/daily`,
     { page: 1, page_size: 120, adjust: 'qfq', end_date: tradeDate },
+    { signal },
   );
   const latest = response.items?.[0];
   return buildSectorStock({ code, name: toText(latest?.name, code) }, response.items ?? []);

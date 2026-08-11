@@ -50,12 +50,17 @@ export function StockNavigator({
       </div>
 
       <div className="navigator-stock-list terminal-scroll">
-        {loading && <div className="radar-placeholder"><span className="loading-pulse" />正在查询股票...</div>}
-        {!loading && error && <div className="radar-placeholder is-error">{error}</div>}
+        {loading && items.length === 0 && (
+          <div className="radar-placeholder"><span className="loading-pulse" />正在查询股票...</div>
+        )}
+        {error && items.length > 0 && (
+          <div className="radar-placeholder is-error">查询失败，保留上次结果</div>
+        )}
+        {!loading && error && items.length === 0 && <div className="radar-placeholder is-error">{error}</div>}
         {!loading && !error && items.length === 0 && (
           <div className="radar-placeholder">没有找到符合条件的股票</div>
         )}
-        {!loading && !error && items.map((stock) => {
+        {items.map((stock) => {
           const isUp = (stock.changePercent ?? 0) >= 0;
           return (
             <button

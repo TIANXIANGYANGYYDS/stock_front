@@ -355,4 +355,31 @@ describe('latest trading date API contract', () => {
       '/backend-api/api/v1/stocks/000001/daily?page=1&page_size=120&adjust=qfq&end_date=2026-08-07',
     ]);
   });
+
+  it('passes supplied abort signals to stock list and detail requests without changing URLs', async () => {
+    const requests: Array<{ url: string; signal: AbortSignal | null }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ url: String(input), signal: init?.signal ?? null });
+      return new Response(JSON.stringify({ items: [], total: 0 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+    const listController = new AbortController();
+    const detailController = new AbortController();
+
+    await getStockList('2026-08-07', '平安', listController.signal);
+    await getStockDetail('000001', '2026-08-07', detailController.signal);
+
+    expect(requests).toEqual([
+      {
+        url: '/backend-api/api/v1/stocks?page=1&page_size=50&keyword=%E5%B9%B3%E5%AE%89&adjust=qfq',
+        signal: listController.signal,
+      },
+      {
+        url: '/backend-api/api/v1/stocks/000001/daily?page=1&page_size=120&adjust=qfq&end_date=2026-08-07',
+        signal: detailController.signal,
+      },
+    ]);
+  });
 });
