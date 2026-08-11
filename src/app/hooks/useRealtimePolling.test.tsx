@@ -114,6 +114,21 @@ describe('useRealtimePolling', () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
+  it('schedules the next request after a stale-market response', async () => {
+    vi.useFakeTimers();
+    const request = vi.fn()
+      .mockResolvedValueOnce({ marketStatus: 'stale', version: 1 })
+      .mockResolvedValueOnce({ marketStatus: 'stale', version: 2 });
+
+    await renderHookHarness({
+      queryKey: 'indices', request, getMarketStatus: (data) => data.marketStatus, intervalMs: 5000,
+    }, () => undefined);
+
+    await act(async () => vi.advanceTimersByTime(5000));
+    await flushPromises();
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
   it('pauses while hidden and refreshes immediately when visibility returns', async () => {
     vi.useFakeTimers();
     const visibility = vi.spyOn(document, 'visibilityState', 'get');

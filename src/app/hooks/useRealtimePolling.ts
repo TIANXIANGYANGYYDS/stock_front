@@ -109,7 +109,7 @@ export function useRealtimePolling<T>({
             return;
           }
           refreshQueued = false;
-          if (outcome === 'success' && lastMarketStatus === 'open') {
+          if (outcome === 'success' && lastMarketStatus !== 'closed') {
             schedule();
           } else if (outcome === 'failure' && (!hasData || lastMarketStatus === 'open')) {
             schedule();

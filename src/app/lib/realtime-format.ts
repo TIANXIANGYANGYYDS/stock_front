@@ -1,7 +1,9 @@
 import type {
+  IntradayInterval,
   MarketIndexQuote,
-  RealtimeStockQuote,
+  StockIntradayBar,
   StockListItem,
+  StockRealtimeQuote,
 } from './api';
 
 export type QuoteTone = 'rise' | 'fall' | 'flat';
@@ -45,7 +47,7 @@ function formatShanghaiDate(date: Date): string {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-function isValidIntradayQuote(item: RealtimeStockQuote): boolean {
+function isValidIntradayBar(item: StockIntradayBar): boolean {
   return typeof item.open === 'number'
     && Number.isFinite(item.open)
     && typeof item.high === 'number'
@@ -54,12 +56,6 @@ function isValidIntradayQuote(item: RealtimeStockQuote): boolean {
     && Number.isFinite(item.low)
     && typeof item.close === 'number'
     && Number.isFinite(item.close);
-}
-
-function isValidTradingDate(value: string | undefined): value is string {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00Z`);
-  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 export function formatShanghaiTime(value: string): string {
@@ -107,26 +103,21 @@ export function orderMarketIndices(items: MarketIndexQuote[]): OrderedMarketInde
 
 export function mergeRealtimeStockItems(
   dailyItems: StockListItem[],
-  realtimeItems: RealtimeStockQuote[],
+  realtimeItems: StockRealtimeQuote[],
 ): StockListItem[] {
   const byCode = new Map<string, {
-    close: number | null;
-    snapshotPrice: number | null;
+    price: number | null;
     amount: number | null;
   }>();
   for (const item of realtimeItems) {
     const current = byCode.get(item.code) ?? {
-      close: null,
-      snapshotPrice: null,
+      price: null,
       amount: null,
     };
     byCode.set(item.code, {
-      close: typeof item.close === 'number' && Number.isFinite(item.close)
-        ? item.close
-        : current.close,
-      snapshotPrice: typeof item.snapshotPrice === 'number' && Number.isFinite(item.snapshotPrice)
-        ? item.snapshotPrice
-        : current.snapshotPrice,
+      price: typeof item.price === 'number' && Number.isFinite(item.price)
+        ? item.price
+        : current.price,
       amount: typeof item.amount === 'number' && Number.isFinite(item.amount)
         ? item.amount
         : current.amount,
@@ -137,11 +128,9 @@ export function mergeRealtimeStockItems(
     if (!realtime) return item;
     return {
       ...item,
-      close: typeof realtime.close === 'number' && Number.isFinite(realtime.close)
-        ? realtime.close
-        : typeof realtime.snapshotPrice === 'number' && Number.isFinite(realtime.snapshotPrice)
-          ? realtime.snapshotPrice
-          : item.close,
+      close: typeof realtime.price === 'number' && Number.isFinite(realtime.price)
+        ? realtime.price
+        : item.close,
       amount: typeof realtime.amount === 'number' && Number.isFinite(realtime.amount)
         ? realtime.amount
         : item.amount,
@@ -149,14 +138,14 @@ export function mergeRealtimeStockItems(
   });
 }
 
-export function selectLatestStockSnapshot(
-  items: RealtimeStockQuote[],
+export function selectRealtimeStockQuote(
+  items: StockRealtimeQuote[],
   code: string,
-): RealtimeStockQuote | null {
-  return items.reduce<RealtimeStockQuote | null>((latest, item) => {
+): StockRealtimeQuote | null {
+  return items.reduce<StockRealtimeQuote | null>((latest, item) => {
     if (item.code !== code
-      || typeof item.snapshotPrice !== 'number'
-      || !Number.isFinite(item.snapshotPrice)) {
+      || typeof item.price !== 'number'
+      || !Number.isFinite(item.price)) {
       return latest;
     }
     if (!latest) return item;
@@ -166,34 +155,25 @@ export function selectLatestStockSnapshot(
   }, null);
 }
 
-export function selectIntradayQuotes(
-  items: RealtimeStockQuote[],
+export function selectIntradayBars(
+  items: StockIntradayBar[],
   code: string,
-  tradingDate?: string,
-): RealtimeStockQuote[] {
-  const validQuotes = items
-    .filter((item) => item.code === code && isValidIntradayQuote(item))
+  tradeDate: string,
+  interval: IntradayInterval,
+): StockIntradayBar[] {
+  const validBars = items
+    .filter((item) => item.code === code && item.interval === interval && isValidIntradayBar(item))
     .flatMap((item) => {
       const timestamp = new Date(item.timestamp).getTime();
       return Number.isFinite(timestamp) ? [{ item, timestamp }] : [];
     });
-  const latestTimestamp = validQuotes.reduce<number | null>(
-    (latest, quote) => latest === null || quote.timestamp > latest ? quote.timestamp : latest,
-    null,
-  );
-  const targetDate = isValidTradingDate(tradingDate)
-    ? tradingDate
-    : latestTimestamp === null ? null : formatShanghaiDate(new Date(latestTimestamp));
-
-  if (!targetDate) return [];
-
-  const quotesByTimestamp = new Map<number, RealtimeStockQuote>();
-  for (const quote of validQuotes) {
-    if (formatShanghaiDate(new Date(quote.timestamp)) === targetDate) {
-      quotesByTimestamp.set(quote.timestamp, quote.item);
+  const barsByTimestamp = new Map<number, StockIntradayBar>();
+  for (const bar of validBars) {
+    if (formatShanghaiDate(new Date(bar.timestamp)) === tradeDate) {
+      barsByTimestamp.set(bar.timestamp, bar.item);
     }
   }
-  return [...quotesByTimestamp.entries()]
+  return [...barsByTimestamp.entries()]
     .sort(([firstTimestamp], [secondTimestamp]) => firstTimestamp - secondTimestamp)
-    .map(([, quote]) => quote);
+    .map(([, bar]) => bar);
 }
