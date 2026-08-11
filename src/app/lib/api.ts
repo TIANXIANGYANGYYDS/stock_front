@@ -761,7 +761,7 @@ export interface RealtimeMarketIndicesResponse {
   items: MarketIndexQuote[];
 }
 
-export type IntradayInterval = '1m' | '5m';
+export type IntradayInterval = '1m' | '5m' | '15m' | '30m' | '60m' | '120m';
 
 export interface StockRealtimeQuote {
   code: string;

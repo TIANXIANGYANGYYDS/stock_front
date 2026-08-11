@@ -98,6 +98,29 @@ describe('realtime quote mapping', () => {
 });
 
 describe('realtime quote requests', () => {
+  it('requests all six supported intraday intervals', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
+      data: { trading_date: '2026-08-11', items: [] },
+    }), { status: 200 })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getStockIntraday('600519', '2026-08-11', '1m');
+    await getStockIntraday('600519', '2026-08-11', '5m');
+    await getStockIntraday('600519', '2026-08-11', '15m');
+    await getStockIntraday('600519', '2026-08-11', '30m');
+    await getStockIntraday('600519', '2026-08-11', '60m');
+    await getStockIntraday('600519', '2026-08-11', '120m');
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      '/backend-api/api/v1/stocks/600519/intraday?trade_date=2026-08-11&interval=1m',
+      '/backend-api/api/v1/stocks/600519/intraday?trade_date=2026-08-11&interval=5m',
+      '/backend-api/api/v1/stocks/600519/intraday?trade_date=2026-08-11&interval=15m',
+      '/backend-api/api/v1/stocks/600519/intraday?trade_date=2026-08-11&interval=30m',
+      '/backend-api/api/v1/stocks/600519/intraday?trade_date=2026-08-11&interval=60m',
+      '/backend-api/api/v1/stocks/600519/intraday?trade_date=2026-08-11&interval=120m',
+    ]);
+  });
+
   it('uses realtime URLs without intervals and an intraday URL with encoded query values', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
