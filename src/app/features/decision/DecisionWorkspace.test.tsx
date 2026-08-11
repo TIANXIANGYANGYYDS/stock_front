@@ -12,6 +12,7 @@ const apiMocks = vi.hoisted(() => ({
 const quoteMocks = vi.hoisted(() => ({
   useRealtimeStocks: vi.fn(),
   useRealtimeStock: vi.fn(),
+  useStockIntraday: vi.fn(),
 }));
 
 vi.mock('../../lib/api', () => apiMocks);
@@ -24,6 +25,9 @@ vi.mock('./StockNavigator', () => ({
     selectedCode,
     loading,
     error,
+    missingCodes,
+    realtimeDelayed,
+    realtimeError,
     onQueryChange,
     onSelect,
   }: {
@@ -32,6 +36,9 @@ vi.mock('./StockNavigator', () => ({
     selectedCode: string;
     loading: boolean;
     error: string | null;
+    missingCodes?: string[];
+    realtimeDelayed?: boolean;
+    realtimeError?: string | null;
     onQueryChange: (query: string) => void;
     onSelect: (code: string) => void;
   }) => (
@@ -41,7 +48,7 @@ vi.mock('./StockNavigator', () => ({
         value={query}
         onChange={(event) => onQueryChange(event.target.value)}
       />
-      <output>{`loading:${loading};error:${error};selected:${selectedCode}`}</output>
+      <output>{`loading:${loading};error:${error};selected:${selectedCode};missing:${missingCodes?.join(',')};delayed:${String(realtimeDelayed)};realtimeError:${realtimeError}`}</output>
       {items.map((item) => (
         <span key={item.code}>
           {item.code}:{item.close}:{item.changePercent}
@@ -56,22 +63,36 @@ vi.mock('../chart/ProfessionalCandlestickChart', () => ({
   ProfessionalCandlestickChart: ({
   stockCode,
   stockName,
+  realtimeData,
+  realtimeLoading,
+  realtimeDelayed,
+  realtimeError,
   intradayData,
   intradayLoading,
   intradayDelayed,
   intradayError,
+  chartMode,
+  intradayInterval,
 }: {
     stockCode?: string;
     stockName?: string;
+    realtimeData?: { items: Array<{ code: string; price: number | null }> } | null;
+    realtimeLoading?: boolean;
+    realtimeDelayed?: boolean;
+    realtimeError?: string | null;
     intradayData?: { items: Array<{ code: string; timestamp: string; close: number | null }> } | null;
     intradayLoading?: boolean;
     intradayDelayed?: boolean;
     intradayError?: string | null;
+    chartMode?: 'daily' | 'intraday';
+    intradayInterval?: '1m' | '5m';
   }) => (
     <section data-testid="chart">
-      身份 {stockCode}:{stockName};错误:{intradayError};
+      身份 {stockCode}:{stockName};快照错误:{realtimeError};分钟错误:{intradayError};
+      快照项 {realtimeData?.items.map((item) => `${item.code}:${item.price}`).join('|')}
+      :{String(realtimeLoading)}:{String(realtimeDelayed)};
       分钟项 {intradayData?.items.map((item) => `${item.timestamp}:${item.close}`).join('|')}
-      :{String(intradayLoading)}:{String(intradayDelayed)}
+      :{String(intradayLoading)}:{String(intradayDelayed)};模式:{chartMode};周期:{intradayInterval}
     </section>
   ),
 }));
@@ -140,7 +161,7 @@ function setSearchValue(host: HTMLElement, value: string): void {
 }
 
 describe('DecisionWorkspace realtime stock coordination', () => {
-  it('merges batch prices, preserves daily percentages, and sends complete selected intraday data only to the chart', async () => {
+  it('separates selected snapshots and intraday bars for the chart while exposing batch gaps to the navigator', async () => {
     vi.useFakeTimers();
     apiMocks.getStockList.mockResolvedValue([
       {
@@ -156,31 +177,36 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     quoteMocks.useRealtimeStocks.mockReturnValue(pollingState({
       tradingDate: '2026-08-10',
       marketStatus: 'open',
-      interval: '1m',
       items: [{
-        code: '600519', name: '贵州茅台', market: 'SH', tradeDate: '2026-08-10',
-        interval: '1m', timestamp: '2026-08-10T09:31:00+08:00', open: 1348,
-        high: 1349.2, low: 1347.5, close: 1348.86, volume: 1000,
-        amount: 1348860, provider: 'TENCENT',
+        code: '600519', name: '贵州茅台', market: 'SH', price: 1348.86,
+        sourceTime: '2026-08-10T09:31:00+08:00', receivedAt: '2026-08-10T09:31:01+08:00',
+        volume: 1000, amount: 1348860, provider: 'TENCENT',
       }],
       missingCodes: ['000001'],
     }));
     quoteMocks.useRealtimeStock.mockImplementation((code: string) => pollingState({
       tradingDate: '2026-08-10',
       marketStatus: 'open',
-      interval: '1m',
       items: code === '600519' ? [{
-        code: '600519', name: '贵州茅台', market: 'SH', tradeDate: '2026-08-10',
-        interval: '1m', timestamp: '2026-08-10T09:30:00+08:00', open: 1347,
+        code: '600519', name: '贵州茅台', market: 'SH', price: 1348.86,
+        sourceTime: '2026-08-10T09:31:00+08:00', receivedAt: '2026-08-10T09:31:01+08:00',
+        volume: 1000, amount: 1348860, provider: 'TENCENT',
+      }] : [],
+      missingCodes: code === '000001' ? ['000001'] : [],
+    }));
+    quoteMocks.useStockIntraday.mockImplementation((options: { code: string }) => pollingState({
+      tradingDate: '2026-08-10',
+      interval: '1m',
+      count: options.code === '600519' ? 2 : 0,
+      items: options.code === '600519' ? [{
+        code: '600519', interval: '1m', timestamp: '2026-08-10T09:30:00+08:00', open: 1347,
         high: 1348, low: 1346.5, close: 1347.52, volume: 800,
         amount: 1_078_016, provider: 'TENCENT',
       }, {
-        code: '600519', name: '贵州茅台', market: 'SH', tradeDate: '2026-08-10',
-        interval: '1m', timestamp: '2026-08-10T09:31:00+08:00', open: 1347.52,
+        code: '600519', interval: '1m', timestamp: '2026-08-10T09:31:00+08:00', open: 1347.52,
         high: 1349.2, low: 1347.5, close: 1348.86, volume: 1000,
         amount: 1_348_860, provider: 'TENCENT',
       }] : [],
-      missingCodes: code === '000001' ? ['000001'] : [],
     }));
 
     const host = document.createElement('div');
@@ -193,7 +219,10 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     expect(quoteMocks.useRealtimeStocks).toHaveBeenLastCalledWith(['600519', '000001']);
     expect(host.textContent).toContain('600519:1348.86:1.2');
     expect(host.textContent).toContain('000001:12:-0.4');
+    expect(host.textContent).toContain('missing:000001;delayed:false;realtimeError:null');
+    expect(host.textContent).toContain('快照项 600519:1348.86:false:false');
     expect(host.textContent).toContain('分钟项 2026-08-10T09:30:00+08:00:1347.52|2026-08-10T09:31:00+08:00:1348.86:false:false');
+    expect(host.textContent).toContain('模式:daily;周期:1m');
     expect(host.textContent).toContain('日线快照');
 
     const select = [...host.querySelectorAll('button')].find(
@@ -204,6 +233,13 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     await act(async () => await Promise.resolve());
 
     expect(quoteMocks.useRealtimeStock).toHaveBeenLastCalledWith('000001');
+    expect(quoteMocks.useStockIntraday).toHaveBeenLastCalledWith(expect.objectContaining({
+      code: '000001',
+      tradeDate: '2026-08-10',
+      interval: '1m',
+      enabled: false,
+      marketStatus: 'open',
+    }));
     expect(host.textContent).toContain('分钟项 :false:false');
   });
 
@@ -219,6 +255,7 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     apiMocks.getStockDetail.mockResolvedValue(null);
     quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
     quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    quoteMocks.useStockIntraday.mockReturnValue(pollingState(null));
     const host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
@@ -247,6 +284,7 @@ describe('DecisionWorkspace realtime stock coordination', () => {
       delayed: true,
       error: '实时服务暂不可用',
     });
+    quoteMocks.useStockIntraday.mockReturnValue(pollingState(null));
     const host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
@@ -255,7 +293,7 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     await act(async () => vi.advanceTimersByTime(180));
     await act(async () => await Promise.resolve());
 
-    expect(host.textContent).toContain('身份 300308:中际旭创;错误:实时服务暂不可用');
+    expect(host.textContent).toContain('身份 300308:中际旭创;快照错误:实时服务暂不可用');
   });
 
   it('aborts the previous list request and sends one trimmed query after 180ms', async () => {
@@ -265,6 +303,7 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     apiMocks.getStockList.mockReturnValueOnce(initial.promise).mockReturnValueOnce(replacement.promise);
     quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
     quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    quoteMocks.useStockIntraday.mockReturnValue(pollingState(null));
     const host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
@@ -292,6 +331,7 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     apiMocks.getStockList.mockResolvedValue([]);
     quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
     quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    quoteMocks.useStockIntraday.mockReturnValue(pollingState(null));
     const host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
@@ -322,6 +362,7 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     apiMocks.getStockDetail.mockResolvedValue(null);
     quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
     quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    quoteMocks.useStockIntraday.mockReturnValue(pollingState(null));
     const host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
@@ -350,6 +391,7 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     apiMocks.getStockDetail.mockResolvedValue(null);
     quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
     quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    quoteMocks.useStockIntraday.mockReturnValue(pollingState(null));
     const host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);

@@ -8,6 +8,7 @@ const apiMocks = vi.hoisted(() => ({
   getRealtimeMarketIndices: vi.fn(),
   getRealtimeStocks: vi.fn(),
   getRealtimeStock: vi.fn(),
+  getStockIntraday: vi.fn(),
 }));
 
 vi.mock('../lib/api', () => apiMocks);
@@ -16,6 +17,7 @@ import {
   useRealtimeMarketIndices,
   useRealtimeStock,
   useRealtimeStocks,
+  useStockIntraday,
 } from './useRealtimeQuotes';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
@@ -56,10 +58,20 @@ function IndicesHarness() {
   return null;
 }
 
+function IntradayHarness({ enabled }: { enabled: boolean }) {
+  useStockIntraday({
+    code: ' 600519 ',
+    tradeDate: '2026-08-10',
+    interval: '5m',
+    enabled,
+    marketStatus: 'open',
+  });
+  return null;
+}
+
 const closedStocks = {
   tradingDate: '2026-08-10',
   marketStatus: 'closed',
-  interval: '1m',
   items: [],
   missingCodes: [],
 };
@@ -73,7 +85,6 @@ describe('realtime quote domain hooks', () => {
     expect(apiMocks.getRealtimeStocks).toHaveBeenCalledTimes(1);
     expect(apiMocks.getRealtimeStocks).toHaveBeenCalledWith(
       ['000001', '600519'],
-      '1m',
       expect.any(AbortSignal),
     );
   });
@@ -101,7 +112,6 @@ describe('realtime quote domain hooks', () => {
     await render(<SingleHarness code=" 600519 " />);
     expect(apiMocks.getRealtimeStock).toHaveBeenCalledWith(
       '600519',
-      '1m',
       expect.any(AbortSignal),
     );
     await act(async () => root?.unmount());
@@ -109,5 +119,27 @@ describe('realtime quote domain hooks', () => {
 
     await render(<IndicesHarness />);
     expect(apiMocks.getRealtimeMarketIndices).toHaveBeenCalledWith(expect.any(AbortSignal));
+  });
+
+  it('requests intraday bars only while the controlled chart query is enabled', async () => {
+    apiMocks.getStockIntraday.mockResolvedValue({
+      tradingDate: '2026-08-10',
+      interval: '5m',
+      count: 0,
+      items: [],
+    });
+
+    await render(<IntradayHarness enabled={false} />);
+    expect(apiMocks.getStockIntraday).not.toHaveBeenCalled();
+    await act(async () => root?.unmount());
+    root = null;
+
+    await render(<IntradayHarness enabled />);
+    expect(apiMocks.getStockIntraday).toHaveBeenCalledWith(
+      '600519',
+      '2026-08-10',
+      '5m',
+      expect.any(AbortSignal),
+    );
   });
 });

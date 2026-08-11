@@ -2,11 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   getStockDetail,
   getStockList,
+  type IntradayInterval,
   type SectorStock,
   type StockListItem,
 } from '../../lib/api';
 import { mergeRealtimeStockItems } from '../../lib/realtime-format';
-import { useRealtimeStock, useRealtimeStocks } from '../../hooks/useRealtimeQuotes';
+import {
+  useRealtimeStock,
+  useRealtimeStocks,
+  useStockIntraday,
+} from '../../hooks/useRealtimeQuotes';
 import { ProfessionalCandlestickChart } from '../chart/ProfessionalCandlestickChart';
 import { DecisionPanel } from './DecisionPanel';
 import { StockNavigator } from './StockNavigator';
@@ -39,9 +44,18 @@ export function DecisionWorkspace({
   const [detailLoading, setDetailLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [chartMode, setChartMode] = useState<'daily' | 'intraday'>('daily');
+  const [intradayInterval, setIntradayInterval] = useState<IntradayInterval>('1m');
   const normalizedQuery = query.trim();
   const batchRealtime = useRealtimeStocks(stockItems.map((item) => item.code));
   const selectedRealtime = useRealtimeStock(selectedStockCode);
+  const intraday = useStockIntraday({
+    code: selectedStockCode,
+    tradeDate: preferredTradeDate,
+    interval: intradayInterval,
+    enabled: chartMode === 'intraday',
+    marketStatus: selectedRealtime.data?.marketStatus ?? 'open',
+  });
   const displayedStockItems = useMemo(
     () => mergeRealtimeStockItems(stockItems, batchRealtime.data?.items ?? []),
     [batchRealtime.data?.items, stockItems],
@@ -114,6 +128,9 @@ export function DecisionWorkspace({
         selectedCode={selectedStockCode}
         loading={listLoading}
         error={listError}
+        missingCodes={batchRealtime.data?.missingCodes ?? []}
+        realtimeDelayed={batchRealtime.delayed}
+        realtimeError={batchRealtime.error}
         onQueryChange={setQuery}
         onSelect={setSelectedStockCode}
       />
@@ -122,10 +139,18 @@ export function DecisionWorkspace({
         stockCode={selectedStockCode}
         stockName={selectedListItem?.name ?? ''}
         loading={detailLoading}
-        intradayData={selectedRealtime.data}
-        intradayLoading={selectedRealtime.initialLoading}
-        intradayDelayed={selectedRealtime.delayed}
-        intradayError={selectedRealtime.error}
+        realtimeData={selectedRealtime.data}
+        realtimeLoading={selectedRealtime.initialLoading}
+        realtimeDelayed={selectedRealtime.delayed}
+        realtimeError={selectedRealtime.error}
+        intradayData={intraday.data}
+        intradayLoading={intraday.initialLoading}
+        intradayDelayed={intraday.delayed}
+        intradayError={intraday.error}
+        chartMode={chartMode}
+        onChartModeChange={setChartMode}
+        intradayInterval={intradayInterval}
+        onIntradayIntervalChange={setIntradayInterval}
         onActiveDateChange={setActiveDate}
       />
       <DecisionPanel

@@ -3,12 +3,24 @@ import {
   getRealtimeMarketIndices,
   getRealtimeStock,
   getRealtimeStocks,
+  getStockIntraday,
+  type IntradayInterval,
   type RealtimeMarketIndicesResponse,
-  type RealtimeStocksResponse,
+  type StockIntradayResponse,
+  type StockRealtimeResponse,
 } from '../lib/api';
 import { useRealtimePolling } from './useRealtimePolling';
 
 const REALTIME_INTERVAL_MS = 5000;
+const INTRADAY_INTERVAL_MS = 30000;
+
+export interface UseStockIntradayOptions {
+  code: string;
+  tradeDate: string;
+  interval: IntradayInterval;
+  enabled: boolean;
+  marketStatus: string;
+}
 
 export function useRealtimeMarketIndices() {
   const request = useCallback(
@@ -23,7 +35,7 @@ export function useRealtimeMarketIndices() {
   });
 }
 
-export function useRealtimeStocks(codes: string[], interval = '1m') {
+export function useRealtimeStocks(codes: string[]) {
   const codeKey = codes.join('\u0000');
   const normalizedCodes = useMemo(
     () => [...new Set(codes.map((code) => code.trim()).filter(Boolean))].sort(),
@@ -31,29 +43,56 @@ export function useRealtimeStocks(codes: string[], interval = '1m') {
   );
   const normalizedKey = normalizedCodes.join(',');
   const request = useCallback(
-    (signal: AbortSignal) => getRealtimeStocks(normalizedCodes, interval, signal),
-    [interval, normalizedKey],
+    (signal: AbortSignal) => getRealtimeStocks(normalizedCodes, signal),
+    [normalizedKey],
   );
-  return useRealtimePolling<RealtimeStocksResponse>({
+  return useRealtimePolling<StockRealtimeResponse>({
     enabled: normalizedCodes.length > 0,
-    queryKey: `stocks:${interval}:${normalizedKey}`,
+    queryKey: `stocks:${normalizedKey}`,
     request,
     getMarketStatus: (response) => response.marketStatus,
     intervalMs: REALTIME_INTERVAL_MS,
   });
 }
 
-export function useRealtimeStock(code: string, interval = '1m') {
+export function useRealtimeStock(code: string) {
   const normalizedCode = code.trim();
   const request = useCallback(
-    (signal: AbortSignal) => getRealtimeStock(normalizedCode, interval, signal),
-    [interval, normalizedCode],
+    (signal: AbortSignal) => getRealtimeStock(normalizedCode, signal),
+    [normalizedCode],
   );
-  return useRealtimePolling<RealtimeStocksResponse>({
+  return useRealtimePolling<StockRealtimeResponse>({
     enabled: Boolean(normalizedCode),
-    queryKey: `stock:${interval}:${normalizedCode}`,
+    queryKey: `stock:${normalizedCode}`,
     request,
     getMarketStatus: (response) => response.marketStatus,
     intervalMs: REALTIME_INTERVAL_MS,
+  });
+}
+
+export function useStockIntraday({
+  code,
+  tradeDate,
+  interval,
+  enabled,
+  marketStatus,
+}: UseStockIntradayOptions) {
+  const normalizedCode = code.trim();
+  const normalizedTradeDate = tradeDate.trim();
+  const request = useCallback(
+    (signal: AbortSignal) => getStockIntraday(
+      normalizedCode,
+      normalizedTradeDate,
+      interval,
+      signal,
+    ),
+    [interval, normalizedCode, normalizedTradeDate],
+  );
+  return useRealtimePolling<StockIntradayResponse>({
+    enabled: enabled && Boolean(normalizedCode) && Boolean(normalizedTradeDate),
+    queryKey: `stock-intraday:${normalizedCode}:${normalizedTradeDate}:${interval}`,
+    request,
+    getMarketStatus: () => marketStatus || 'open',
+    intervalMs: INTRADAY_INTERVAL_MS,
   });
 }
