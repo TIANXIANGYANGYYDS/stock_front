@@ -251,6 +251,56 @@ describe('ProfessionalCandlestickChart interactions', () => {
     await act(async () => root.unmount());
   });
 
+  it('does not render stale daily data under a newly selected stock identity', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        stockCode="002384"
+        stockName="东山精密"
+      />,
+    ));
+
+    expect(host.querySelector('.stock-identity')?.textContent).toContain('东山精密002384');
+    expect(host.querySelector('.stock-price-row')?.textContent).not.toContain('10.80');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('--');
+    expect(host.querySelector('.ohlc-legend')?.textContent).not.toContain('2026-08-08');
+    expect(host.querySelector('.indicator-legend-board')?.textContent).not.toContain('10.40');
+    expect(host.querySelector('.stock-live-state')?.textContent).toContain('暂无日线行情');
+    expect(host.querySelector('.chart-canvas-shell')?.textContent)
+      .toContain('请选择包含有效日 K 数据的股票');
+    expect(chartHarness.createChart).not.toHaveBeenCalled();
+
+    await act(async () => root.unmount());
+  });
+
+  it('hides matching daily data while its detail request is loading', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        stockCode="600000"
+        stockName="浦发银行"
+        loading
+      />,
+    ));
+
+    expect(host.querySelector('.stock-price-row')?.textContent).not.toContain('10.80');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('--');
+    expect(host.querySelector('.ohlc-legend')?.textContent).not.toContain('2026-08-08');
+    expect(host.querySelector('.indicator-legend-board')?.textContent).not.toContain('10.40');
+    expect(host.querySelector('.stock-live-state')?.textContent).toContain('日线行情加载中');
+    expect(host.querySelector('.chart-canvas-shell')?.textContent).toContain('正在加载个股行情');
+
+    await act(async () => root.unmount());
+  });
+
   it('renders sorted minute candles and finite volume without reporting a minute date', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -379,6 +429,43 @@ describe('ProfessionalCandlestickChart interactions', () => {
     expect(host.querySelector('.stock-price-row')?.textContent).toContain('887.98');
     expect(host.textContent).toContain('12:05:15');
     expect(host.textContent).toContain('接口当前仅提供实时快照，暂无分钟 K 数据');
+
+    await act(async () => root.unmount());
+  });
+
+  it('uses a neutral tone for a snapshot without a matching daily direction', async () => {
+    const snapshot: RealtimeStockQuote = {
+      ...realtimeQuote,
+      code: '300308',
+      name: '中际旭创',
+      timestamp: '',
+      open: null,
+      high: null,
+      low: null,
+      close: null,
+      snapshotPrice: 887.98,
+      sourceTime: '2026-08-11T12:05:15+08:00',
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={null}
+        stockCode="300308"
+        stockName="中际旭创"
+        intradayData={{ ...intradayResponse, items: [snapshot] }}
+      />,
+    ));
+    const minuteButton = [...host.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === '分钟线');
+    if (!minuteButton) throw new Error('Missing minute mode button');
+    await act(async () => minuteButton.click());
+
+    const price = host.querySelector('.stock-price-row > span');
+    expect(price?.textContent).toBe('887.98');
+    expect(price?.className).toBe('market-flat');
 
     await act(async () => root.unmount());
   });

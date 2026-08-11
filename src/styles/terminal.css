@@ -1347,6 +1347,7 @@ button {
 
 .market-rise { color: var(--terminal-rise) !important; }
 .market-fall { color: var(--terminal-fall) !important; }
+.market-flat { color: var(--terminal-text) !important; }
 
 .view-heading {
   display: flex;
