@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Building2,
   Clock3,
-  Newspaper,
   Search,
   Sparkles,
   Tag,
@@ -95,18 +94,6 @@ export function NewsIntelligenceView({ tradeDate }: NewsIntelligenceViewProps) {
 
   return (
     <main className="news-intelligence-view">
-      <section className="view-heading news-view-heading">
-        <div>
-          <span className="eyebrow"><Newspaper size={12} /> NEWS INTELLIGENCE</span>
-          <h1>实时资讯</h1>
-          <p>跟踪 {tradeDate} 的事件冲击、市场情绪与关联股票板块</p>
-        </div>
-        <div className="news-search-box">
-          <Search size={15} />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索新闻、股票或板块" />
-        </div>
-      </section>
-
       <div className="news-filter-bar">
         <div className="news-window-group" aria-label="资讯时间范围">
           {([{ value: 1, label: '当天' }, { value: 3, label: '3天' }, { value: 7, label: '7天' }] as const).map((option) => (
@@ -147,6 +134,10 @@ export function NewsIntelligenceView({ tradeDate }: NewsIntelligenceViewProps) {
           </div>
         </div>
         <span className="news-filter-summary">资讯窗口：{windowLabel} · {sortLabel}{directionLabel}</span>
+        <label className="news-search-box">
+          <Search size={15} />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索新闻、股票或板块" />
+        </label>
       </div>
 
       <div className="news-split-layout">

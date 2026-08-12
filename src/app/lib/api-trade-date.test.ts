@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getNews,
   getNewsSentimentOverview,
-  getLatestTradeDate,
+  getLatestMarketDates,
   getMarketOverview,
   getPreopenAnalysis,
   getSectorStocks,
@@ -17,29 +17,128 @@ afterEach(() => {
 });
 
 describe('latest trading date API contract', () => {
-  it('reads the sole application trading date from the market endpoint', async () => {
+  it('reads separate market and morning-analysis dates from the market endpoint', async () => {
     const requests: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       requests.push(String(input));
       return new Response(JSON.stringify({
-        data: { latest_trade_date: '2026-08-07' },
+        data: {
+          latest_trade_date: '2026-08-10',
+          latest_analysis_date: '2026-08-11',
+        },
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }));
 
-    const result = await getLatestTradeDate();
+    const result = await getLatestMarketDates();
 
-    expect(result).toBe('2026-08-07');
+    expect(result).toEqual({
+      marketTradeDate: '2026-08-10',
+      analysisDate: '2026-08-11',
+    });
     expect(requests).toEqual([
       '/backend-api/api/v1/market/latest-trade-date',
     ]);
   });
 
-  it('preserves an empty latest trading date instead of inventing a calendar date', async () => {
+  it('routes market data to the trade date and morning analysis to the analysis date', async () => {
+    const requests: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requests.push(url);
+      const payload = url.endsWith('/api/v1/market/latest-trade-date')
+        ? {
+            data: {
+              latest_trade_date: '2026-08-10',
+              latest_analysis_date: '2026-08-11',
+            },
+          }
+        : url.endsWith('/api/v1/stats')
+          ? { stocks: { stock_count: 0 }, news: { total: 0 } }
+          : url.includes('/api/v1/morning-analyses/')
+            ? {
+                data: {
+                  analysis_date: '2026-08-11',
+                  trade_date: '2026-08-10',
+                  analysis: { mainlines: [] },
+                },
+              }
+            : { items: [], total: 0 };
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    const dates = await getLatestMarketDates();
+    if (!dates.marketTradeDate) throw new Error('Missing market trade date');
+    const analysis = await getPreopenAnalysis(dates.analysisDate);
+    await getMarketOverview(dates.marketTradeDate);
+
+    expect(analysis).toMatchObject({
+      analysisDate: '2026-08-11',
+      tradeDate: '2026-08-10',
+    });
+    expect(requests).toContain(
+      '/backend-api/api/v1/morning-analyses/2026-08-11',
+    );
+    expect(requests).toContain(
+      '/backend-api/api/v1/stock-daily/2026-08-10?page=1&page_size=5&adjust=qfq&sort_by=pct_chg&sort_order=desc',
+    );
+  });
+
+  it.each([
+    { caseName: 'null', latestAnalysisDate: null },
+    { caseName: 'missing', latestAnalysisDate: undefined },
+  ])('requests the latest morning analysis when latest_analysis_date is $caseName', async ({
+    latestAnalysisDate,
+  }) => {
+    const requests: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requests.push(url);
+      const payload = url.endsWith('/api/v1/market/latest-trade-date')
+        ? {
+            data: {
+              latest_trade_date: '2026-08-10',
+              ...(latestAnalysisDate === undefined
+                ? {}
+                : { latest_analysis_date: latestAnalysisDate }),
+            },
+          }
+        : {
+            data: {
+              analysis_date: '2026-08-11',
+              trade_date: '2026-08-10',
+              analysis: { mainlines: [] },
+            },
+          };
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    const dates = await getLatestMarketDates();
+    await getPreopenAnalysis(dates.analysisDate);
+
+    expect(requests).toEqual([
+      '/backend-api/api/v1/market/latest-trade-date',
+      '/backend-api/api/v1/morning-analyses/latest',
+    ]);
+    expect(requests).not.toContain(
+      '/backend-api/api/v1/morning-analyses/2026-08-10',
+    );
+  });
+
+  it('preserves empty latest dates instead of inventing calendar dates', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
-      data: { latest_trade_date: null },
+      data: { latest_trade_date: null, latest_analysis_date: null },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
 
-    await expect(getLatestTradeDate()).resolves.toBeNull();
+    await expect(getLatestMarketDates()).resolves.toEqual({
+      marketTradeDate: null,
+      analysisDate: null,
+    });
   });
 
   it('uses the resolved market date even when stats exposes a different date', async () => {
@@ -66,23 +165,23 @@ describe('latest trading date API contract', () => {
   });
 
 
-  it('requests the morning analysis for the resolved latest trading date', async () => {
+  it('requests an explicitly selected historical morning-analysis date', async () => {
     const requests: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       requests.push(String(input));
       return new Response(JSON.stringify({
         data: {
-          analysis_date: '2026-08-07',
-          trade_date: '2026-08-07',
+          analysis_date: '2026-08-01',
+          trade_date: '2026-07-31',
           analysis: { mainlines: [] },
         },
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }));
 
-    await getPreopenAnalysis('2026-08-07');
+    await getPreopenAnalysis('2026-08-01');
 
     expect(requests).toEqual([
-      '/backend-api/api/v1/morning-analyses/2026-08-07',
+      '/backend-api/api/v1/morning-analyses/2026-08-01',
     ]);
   });
 
@@ -134,8 +233,8 @@ describe('latest trading date API contract', () => {
     }));
 
     await expect(getPreopenAnalysis('2026-08-07')).resolves.toEqual({
-      date: '2026-08-07',
-      tradeDate: '2026-08-07',
+      analysisDate: '2026-08-07',
+      tradeDate: '',
       analysisText: '',
       mainLines: [],
     });
@@ -151,8 +250,8 @@ describe('latest trading date API contract', () => {
     })));
 
     await expect(getPreopenAnalysis('2026-08-07')).resolves.toEqual({
-      date: '2026-08-07',
-      tradeDate: '2026-08-07',
+      analysisDate: '2026-08-07',
+      tradeDate: '',
       analysisText: '',
       mainLines: [],
     });

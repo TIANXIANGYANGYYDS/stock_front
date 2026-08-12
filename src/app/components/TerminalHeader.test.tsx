@@ -86,6 +86,7 @@ describe('TerminalHeader market index strip', () => {
     expect(tickers[0].className).toContain('is-rise');
     expect(tickers[1].className).toContain('is-fall');
     expect(tickers[4].className).toContain('is-flat');
+    expect(host.textContent).toContain('行情数据日期');
     expect(host.textContent).toContain('2026-08-10');
     expect(host.textContent).toContain('更新 09:30:05');
     expect(host.textContent).not.toContain('接口待接入');

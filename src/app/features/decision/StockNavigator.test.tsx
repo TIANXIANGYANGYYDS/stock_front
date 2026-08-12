@@ -152,6 +152,35 @@ describe('StockNavigator', () => {
     await act(async () => root.unmount());
   });
 
+  it('labels realtime rows separately from official daily rows', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <StockNavigator
+        items={[
+          { ...items[0], tradeDate: '2026-08-12', isRealtime: true },
+          items[1],
+        ]}
+        query=""
+        selectedCode="000001"
+        loading={false}
+        error={null}
+        missingCodes={[]}
+        realtimeDelayed={false}
+        realtimeError={null}
+        onQueryChange={() => undefined}
+        onSelect={() => undefined}
+      />,
+    ));
+
+    const tags = [...host.querySelectorAll('.stock-date-tag')].map((node) => node.textContent);
+    expect(tags).toEqual(['实时 08-12', '08-07']);
+
+    await act(async () => root.unmount());
+  });
+
   it('uses red for rises, green for falls, and neutral for flat or unknown changes', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);

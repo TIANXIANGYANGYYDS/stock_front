@@ -3,7 +3,6 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import {
   Database,
   ListChecks,
-  MessageSquareQuote,
   RotateCcw,
   Search,
   Timer,
@@ -55,8 +54,6 @@ function errorText(error: unknown, fallback: string): string {
 export function CreatorInsightsView() {
   const [accounts, setAccounts] = useState<CreatorAccount[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
-  const [accountsError, setAccountsError] = useState<string | null>(null);
-  const [accountsReload, setAccountsReload] = useState(0);
 
   const [analyses, setAnalyses] = useState<CreatorOpinionAnalysis[]>([]);
   const [rankingLoading, setRankingLoading] = useState(true);
@@ -111,15 +108,13 @@ export function CreatorInsightsView() {
   useEffect(() => {
     let cancelled = false;
     setAccountsLoading(true);
-    setAccountsError(null);
     void getCreatorAccounts()
       .then((items) => {
         if (!cancelled) setAccounts(items);
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (!cancelled) {
           setAccounts([]);
-          setAccountsError(errorText(error, '博主账号加载失败'));
         }
       })
       .finally(() => {
@@ -128,7 +123,7 @@ export function CreatorInsightsView() {
     return () => {
       cancelled = true;
     };
-  }, [accountsReload]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -335,22 +330,6 @@ export function CreatorInsightsView() {
 
   return (
     <main className="creator-insights-view">
-      <section className="view-heading creator-view-heading">
-        <div>
-          <span className="eyebrow"><MessageSquareQuote size={12} /> CREATOR INTELLIGENCE</span>
-          <h1>博主观点</h1>
-          <p>聚合真实作品、结构化观点与历史验证；AI 提取和准确率仅供信息参考，不构成投资建议</p>
-        </div>
-        <div className="creator-account-state">
-          {accountsLoading ? '正在同步博主账号' : accountsError || '博主账号已同步'}
-          {accountsError && (
-            <button type="button" onClick={() => setAccountsReload((value) => value + 1)}>
-              <RotateCcw size={12} />重试
-            </button>
-          )}
-        </div>
-      </section>
-
       <section className="creator-overview-grid" aria-label="博主观点概览">
         <div className="terminal-panel creator-overview-card">
           <UsersRound size={15} /><span>监控博主</span><b>{accountsLoading ? '--' : accounts.length}</b>

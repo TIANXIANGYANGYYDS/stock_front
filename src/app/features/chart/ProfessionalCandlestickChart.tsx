@@ -9,6 +9,7 @@ import {
   LineStyle,
   type IChartApi,
   type ISeriesApi,
+  type MouseEventParams,
   type Time,
 } from 'lightweight-charts';
 import {
@@ -35,13 +36,13 @@ import {
 } from '../../lib/realtime-format';
 import {
   buildIndicatorData,
+  buildCurrentDayChartBars,
   buildMovingAverageData,
   buildVolumeData,
   buildVolumeMovingAverageData,
   formatChartVolume,
   getAvailableChartIndicators,
   getAvailableMaKeys,
-  normalizeChartBars,
   type AuxiliaryChartIndicator,
   type ChartBar,
 } from './chart-data';
@@ -220,7 +221,6 @@ export function ProfessionalCandlestickChart({
   const onActiveDateChangeRef = useRef(onActiveDateChange);
   const selectedCode = stockCode || stock?.code || '';
   const dailyStock = !loading && stock?.code === selectedCode ? stock : null;
-  const bars = useMemo(() => normalizeChartBars(dailyStock?.kline ?? []), [dailyStock]);
   const intradayBars = useMemo(
     () => selectIntradayBars(
       intradayData?.items ?? [],
@@ -230,12 +230,30 @@ export function ProfessionalCandlestickChart({
     ),
     [intradayData, intradayInterval, selectedCode],
   );
+  const currentDayIntradayBars = useMemo(
+    () => selectIntradayBars(
+      intradayData?.items ?? [],
+      selectedCode,
+      intradayData?.tradeDate ?? '',
+      intradayData?.interval ?? intradayInterval,
+    ),
+    [intradayData, intradayInterval, selectedCode],
+  );
   const selectedRealtime = useMemo(
     () => selectRealtimeStockQuote(
       realtimeData?.items ?? [],
       selectedCode,
     ),
     [realtimeData, selectedCode],
+  );
+  const bars = useMemo(
+    () => buildCurrentDayChartBars(
+      dailyStock?.kline ?? [],
+      currentDayIntradayBars,
+      selectedRealtime,
+      realtimeData?.tradingDate ?? '',
+    ),
+    [currentDayIntradayBars, dailyStock, realtimeData?.tradingDate, selectedRealtime],
   );
   const availableMaKeys = useMemo(() => getAvailableMaKeys(bars), [bars]);
   const availableIndicators = useMemo(() => getAvailableChartIndicators(bars), [bars]);
@@ -389,7 +407,7 @@ export function ProfessionalCandlestickChart({
       return [series];
     });
 
-    const handleCrosshairMove = (param: Parameters<typeof chart.subscribeCrosshairMove>[0]) => {
+    const handleCrosshairMove = (param: MouseEventParams<Time>) => {
       if (!param.time) {
         setActiveBar(bars.at(-1) ?? null);
         onActiveDateChangeRef.current?.(null);
@@ -565,17 +583,42 @@ export function ProfessionalCandlestickChart({
   const activeDailyBar = activeBar && bars.includes(activeBar) ? activeBar : bars.at(-1);
   const legend = toLegend(activeDailyBar);
   const latestBar = bars.at(-1) ?? null;
+  const latestOfficialBar = dailyStock?.kline
+    ?.filter((bar) => /^\d{4}-\d{2}-\d{2}$/.test(bar.date))
+    .sort((left, right) => left.date.localeCompare(right.date))
+    .at(-1) ?? null;
   const showingLatestBar = Boolean(latestBar && activeDailyBar?.time === latestBar.time);
   const latestIntradayBar = intradayBars.at(-1) ?? null;
   const isIntradayMode = chartMode === 'intraday';
   const showingCurrentDailyPosition = !activeDailyBar || showingLatestBar;
+  const realtimeTradingDate = realtimeData?.tradingDate ?? '';
+  const realtimeDateIsUsable = Boolean(
+    selectedRealtime
+    && /^\d{4}-\d{2}-\d{2}$/.test(realtimeTradingDate)
+    && (!latestOfficialBar || realtimeTradingDate >= latestOfficialBar.date),
+  );
+  const usableRealtime = realtimeDateIsUsable ? selectedRealtime : null;
+  const realtimeDateIsNewer = Boolean(
+    usableRealtime
+    && realtimeTradingDate > (latestOfficialBar?.date ?? ''),
+  );
+  const hasTemporaryDailyBar = Boolean(
+    realtimeDateIsNewer
+    && latestBar?.time === realtimeTradingDate,
+  );
+  const realtimeDailyChangePercent = realtimeDateIsNewer
+    && typeof usableRealtime?.price === 'number'
+    && typeof latestOfficialBar?.close === 'number'
+    && latestOfficialBar.close > 0
+    ? ((usableRealtime.price - latestOfficialBar.close) / latestOfficialBar.close) * 100
+    : null;
   const dailyDirection = activeDailyBar
     ? showingLatestBar
-      ? dailyStock?.changePercent ?? legend?.changePercent
+      ? realtimeDailyChangePercent ?? dailyStock?.changePercent ?? legend?.changePercent
       : legend?.changePercent
     : null;
   const priceTone = isIntradayMode
-    ? selectedRealtime
+    ? usableRealtime
       ? 'flat'
       : latestIntradayBar
       ? toneFromDirection(
@@ -584,13 +627,19 @@ export function ProfessionalCandlestickChart({
       : 'flat'
     : toneFromDirection(dailyDirection);
   const displayedPrice = isIntradayMode
-    ? selectedRealtime?.price ?? latestIntradayBar?.close
+    ? usableRealtime?.price ?? latestIntradayBar?.close
     : showingCurrentDailyPosition
-      ? selectedRealtime?.price ?? legend?.close ?? dailyStock?.close
+      ? usableRealtime?.price ?? legend?.close ?? dailyStock?.close
       : legend?.close;
   const showingRealtimeDailyPrice = !isIntradayMode
     && showingCurrentDailyPosition
-    && selectedRealtime !== null;
+    && usableRealtime !== null;
+  const displayedDailyChangePercent = showingRealtimeDailyPrice && realtimeDateIsNewer
+    ? realtimeDailyChangePercent
+    : legend?.changePercent;
+  const displayedDailyDate = showingRealtimeDailyPrice && realtimeDateIsNewer
+    ? realtimeTradingDate
+    : legend?.time || dailyStock?.tradeDate;
   const realtimeIsDelayed = realtimeDelayed
     || Boolean(realtimeError)
     || realtimeData?.marketStatus === 'stale';
@@ -615,7 +664,9 @@ export function ProfessionalCandlestickChart({
     ? '日线行情加载中'
     : dailyStock
       ? [
-          showingLatestBar ? '日线 · 最新交易日' : '历史 K 线',
+          showingLatestBar
+            ? hasTemporaryDailyBar ? '日线 · 盘中临时日 K' : '日线 · 最新交易日'
+            : '历史 K 线',
           showingLatestBar && realtimeLoading && !selectedRealtime ? '实时行情加载中' : '',
           showingLatestBar && realtimeData?.marketStatus === 'closed' ? '已闭市 · 最后行情' : '',
           showingLatestBar && realtimeIsDelayed ? '数据可能延迟' : '',
@@ -651,7 +702,7 @@ export function ProfessionalCandlestickChart({
       ];
       return entries.filter(({ value }) => typeof value === 'number' && Number.isFinite(value));
     }
-    const group = bar[indicator] as Record<string, number | null> | null | undefined;
+    const group = bar[indicator] as unknown as Record<string, number | null> | null | undefined;
     return AUXILIARY_LINES[indicator].flatMap(({ key, label, color }) => {
       const value = group?.[key];
       return typeof value === 'number' && Number.isFinite(value)
@@ -670,11 +721,11 @@ export function ProfessionalCandlestickChart({
             <span>{stockCode || stock?.code || selectedRealtime?.code || '--'}</span>
             {(isIntradayMode
               ? intradayData?.tradeDate
-              : legend?.time || dailyStock?.tradeDate) && (
+              : displayedDailyDate) && (
               <span className="trade-date-chip">
                 {isIntradayMode
                   ? intradayData?.tradeDate
-                  : legend?.time || dailyStock?.tradeDate}
+                  : displayedDailyDate}
               </span>
             )}
           </div>
@@ -683,9 +734,9 @@ export function ProfessionalCandlestickChart({
             {showingRealtimeDailyPrice && <small className="quote-source-tag">实时价</small>}
             {!isIntradayMode && (
               <small className={toneClass(priceTone)}>
-                {legend?.changePercent === null || legend?.changePercent === undefined
+                {displayedDailyChangePercent === null || displayedDailyChangePercent === undefined
                   ? '--'
-                  : `日线涨跌 ${legend.changePercent > 0 ? '+' : ''}${legend.changePercent.toFixed(2)}%`}
+                  : `${showingRealtimeDailyPrice && realtimeDateIsNewer ? '实时涨跌' : '日线涨跌'} ${displayedDailyChangePercent > 0 ? '+' : ''}${displayedDailyChangePercent.toFixed(2)}%`}
               </small>
             )}
           </div>
@@ -693,8 +744,8 @@ export function ProfessionalCandlestickChart({
             {isIntradayMode
               ? latestIntradayBar
                 ? `分钟线 ${intradayInterval} ${formatShanghaiTime(latestIntradayBar.timestamp)} · ${minuteState}`
-                : selectedRealtime
-                  ? `实时快照 ${formatShanghaiTime(selectedRealtime.sourceTime || selectedRealtime.receivedAt)} · ${minuteState}`
+                : usableRealtime
+                  ? `实时快照 ${formatShanghaiTime(usableRealtime.sourceTime || usableRealtime.receivedAt)} · ${minuteState}`
                   : minuteState
               : dailyState}
             {isIntradayMode && intradayBars.length === 1 && (

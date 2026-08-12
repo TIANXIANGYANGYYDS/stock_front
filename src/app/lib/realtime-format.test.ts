@@ -24,7 +24,11 @@ function stockQuote(code: string, price: number | null, amount: number | null): 
 }
 
 function intradayBar(timestamp: string, overrides: Partial<StockIntradayBar> = {}): StockIntradayBar {
-  return { code: '600519', interval: '1m', timestamp, open: 10, high: 11, low: 9, close: 10.5, volume: 100, amount: 1000, provider: 'TENCENT', ...overrides };
+  return {
+    code: '600519', name: '贵州茅台', market: 'SH', tradeDate: '2026-08-10',
+    interval: '1m', timestamp, open: 10, high: 11, low: 9, close: 10.5,
+    volume: 100, amount: 1000, provider: 'TENCENT', ...overrides,
+  };
 }
 
 describe('realtime quote presentation rules', () => {
@@ -61,6 +65,53 @@ describe('batch realtime stock merging', () => {
   it('keeps daily values when snapshot fields or the entire quote are missing', () => {
     const daily: StockListItem[] = [{ code: '600519', name: '贵州茅台', tradeDate: '2026-08-10', close: 1300, changePercent: 1.2, amount: 10 }];
     expect(mergeRealtimeStockItems(daily, [stockQuote('600519', null, null)])).toEqual(daily);
+  });
+
+  it('uses a newer realtime date and computes its percentage from the official previous close', () => {
+    const daily: StockListItem[] = [{
+      code: '300308', name: '中际旭创', tradeDate: '2026-08-11',
+      close: 900, changePercent: 4.5, amount: 10,
+    }];
+
+    expect(mergeRealtimeStockItems(
+      daily,
+      [stockQuote('300308', 918, 20)],
+      '2026-08-12',
+    )[0]).toEqual({
+      code: '300308', name: '中际旭创', tradeDate: '2026-08-12',
+      close: 918, changePercent: 2, amount: 20, isRealtime: true,
+    });
+  });
+
+  it('does not let an older realtime response overwrite newer official daily data', () => {
+    const daily: StockListItem[] = [{
+      code: '300308', name: '中际旭创', tradeDate: '2026-08-12',
+      close: 920, changePercent: 2.22, amount: 30,
+    }];
+
+    expect(mergeRealtimeStockItems(
+      daily,
+      [stockQuote('300308', 918, 20)],
+      '2026-08-11',
+    )).toEqual(daily);
+  });
+
+  it('uses the selected single-stock quote instead of an older batch snapshot', () => {
+    const daily: StockListItem[] = [{
+      code: '300308', name: '中际旭创', tradeDate: '2026-08-11',
+      close: 900, changePercent: 4.5, amount: 10,
+    }];
+
+    expect(mergeRealtimeStockItems(
+      daily,
+      [stockQuote('300308', 918.08, 20)],
+      '2026-08-12',
+      { quote: stockQuote('300308', 918.38, 21), tradingDate: '2026-08-12' },
+    )[0]).toMatchObject({
+      tradeDate: '2026-08-12',
+      close: 918.38,
+      amount: 21,
+    });
   });
 });
 

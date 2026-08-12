@@ -380,10 +380,13 @@ interface RawStatsResponse {
   };
 }
 
+export interface LatestMarketDatePayload {
+  latest_trade_date: string | null;
+  latest_analysis_date: string | null;
+}
+
 interface RawLatestTradeDateResponse {
-  data?: {
-    latest_trade_date?: string | null;
-  } | null;
+  data?: Partial<LatestMarketDatePayload> | null;
 }
 
 interface RawMorningMainline {
@@ -740,6 +743,11 @@ export interface MarketOverviewResponse {
   newsCount: number;
 }
 
+export interface LatestMarketDates {
+  marketTradeDate: string | null;
+  analysisDate: string | null;
+}
+
 export interface MarketIndexQuote {
   symbol: string;
   name: string;
@@ -820,6 +828,7 @@ export interface StockListItem {
   close: number | null;
   changePercent: number | null;
   amount: number | null;
+  isRealtime?: boolean;
 }
 
 export interface MainlineSector {
@@ -833,7 +842,7 @@ export interface MainlineSector {
 }
 
 export interface PreopenAnalysisResponse {
-  date: string;
+  analysisDate: string;
   tradeDate: string;
   analysisText: string;
   mainLines: MainlineSector[];
@@ -1542,10 +1551,17 @@ export async function getNewsSentimentOverview(tradeDate: string): Promise<NewsS
   };
 }
 
-export async function getLatestTradeDate(): Promise<string | null> {
+function normalizeApiDate(value: unknown): string | null {
+  const date = toText(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
+
+export async function getLatestMarketDates(): Promise<LatestMarketDates> {
   const response = await requestJson<RawLatestTradeDateResponse>('/api/v1/market/latest-trade-date');
-  const tradeDate = toText(response.data?.latest_trade_date);
-  return /^\d{4}-\d{2}-\d{2}$/.test(tradeDate) ? tradeDate : null;
+  return {
+    marketTradeDate: normalizeApiDate(response.data?.latest_trade_date),
+    analysisDate: normalizeApiDate(response.data?.latest_analysis_date),
+  };
 }
 
 export async function getMarketOverview(tradeDate: string): Promise<MarketOverviewResponse> {
@@ -1573,14 +1589,22 @@ export async function getMarketOverview(tradeDate: string): Promise<MarketOvervi
   };
 }
 
-export async function getPreopenAnalysis(tradeDate: string): Promise<PreopenAnalysisResponse> {
-  const path = `/api/v1/morning-analyses/${encodeURIComponent(tradeDate)}`;
+export async function getPreopenAnalysis(analysisDate: string | null): Promise<PreopenAnalysisResponse> {
+  const requestedAnalysisDate = analysisDate?.trim() || '';
+  const path = requestedAnalysisDate
+    ? `/api/v1/morning-analyses/${encodeURIComponent(requestedAnalysisDate)}`
+    : '/api/v1/morning-analyses/latest';
   let response: DetailResponse<RawMorningAnalysis>;
   try {
     response = await requestJson<DetailResponse<RawMorningAnalysis>>(path);
   } catch (error) {
     if (error instanceof Error && /接口请求失败:\s*404\b/.test(error.message)) {
-      return { date: tradeDate, tradeDate, analysisText: '', mainLines: [] };
+      return {
+        analysisDate: requestedAnalysisDate,
+        tradeDate: '',
+        analysisText: '',
+        mainLines: [],
+      };
     }
     throw error;
   }
@@ -1604,8 +1628,8 @@ export async function getPreopenAnalysis(tradeDate: string): Promise<PreopenAnal
   });
 
   return {
-    date: toText(raw.analysis_date || raw.trade_date, tradeDate),
-    tradeDate: toText(raw.trade_date || raw.analysis_date, tradeDate),
+    analysisDate: toText(raw.analysis_date, requestedAnalysisDate),
+    tradeDate: toText(raw.trade_date),
     analysisText,
     mainLines,
     ...(analysis.market_style ? { marketStyle: toText(analysis.market_style) } : {}),

@@ -4,10 +4,10 @@ import { getPreopenAnalysis, type PreopenAnalysisResponse } from '../lib/api';
 import { analysisAdviceText, resolveMainLines } from '../features/market/market-analysis-state';
 
 interface MarketAnalysisProps {
-  preferredTradeDate: string;
+  analysisDate: string | null;
 }
 
-export function MarketAnalysis({ preferredTradeDate }: MarketAnalysisProps) {
+export function MarketAnalysis({ analysisDate }: MarketAnalysisProps) {
   const [analysis, setAnalysis] = useState<PreopenAnalysisResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +20,7 @@ export function MarketAnalysis({ preferredTradeDate }: MarketAnalysisProps) {
       setLoading(true);
       setError(null);
       try {
-        const data = await getPreopenAnalysis(preferredTradeDate);
+        const data = await getPreopenAnalysis(analysisDate);
         if (!cancelled) setAnalysis(data);
       } catch (requestError: unknown) {
         if (!cancelled) {
@@ -34,11 +34,10 @@ export function MarketAnalysis({ preferredTradeDate }: MarketAnalysisProps) {
 
     void loadAnalysis();
     return () => { cancelled = true; };
-  }, [preferredTradeDate]);
+  }, [analysisDate]);
 
   const mainLines = resolveMainLines(analysis);
-  const dateLabel = analysis?.tradeDate || analysis?.date || '--';
-  const dateIsBehind = dateLabel !== '--' && preferredTradeDate !== dateLabel;
+  const dateLabel = analysis?.analysisDate || '--';
   const adviceText = analysisAdviceText(analysis);
 
   const getPriorityStyle = (priority: string) => {
@@ -74,12 +73,7 @@ export function MarketAnalysis({ preferredTradeDate }: MarketAnalysisProps) {
           </div>
           <div>
             <h3 className="text-sm text-white">每日盘前分析</h3>
-            <p className="text-xs text-slate-400">交易日：{dateLabel}</p>
-            {dateIsBehind && (
-              <p className="text-[11px] text-amber-400 mt-0.5">
-                接口返回日期与当前交易日 {preferredTradeDate} 不一致
-              </p>
-            )}
+            <p className="text-xs text-slate-400">盘前分析日期：{dateLabel}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -96,7 +90,7 @@ export function MarketAnalysis({ preferredTradeDate }: MarketAnalysisProps) {
         {loading && <div className="text-xs text-slate-400">分析加载中...</div>}
         {!loading && error && <div className="text-xs text-red-400">{error}</div>}
         {!loading && !error && mainLines.length === 0 && (
-          <div className="text-xs text-slate-400">该交易日暂无盘前分析数据</div>
+          <div className="text-xs text-slate-400">该盘前分析日期暂无盘前分析数据</div>
         )}
 
         {!loading && !error && mainLines.map((line) => {
@@ -167,7 +161,7 @@ export function MarketAnalysis({ preferredTradeDate }: MarketAnalysisProps) {
             <div className="analysis-detail-meta">
               <span>{selectedLine.role || '观察方向'}</span>
               <span>置信度 {selectedLine.confidence ?? '--'}</span>
-              <span>交易日 {dateLabel}</span>
+              <span>盘前分析日期 {dateLabel}</span>
             </div>
             <section><h3>主线逻辑</h3><p>{selectedLine.reason || '后端未返回详细理由'}</p></section>
             <section>

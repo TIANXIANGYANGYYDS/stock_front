@@ -95,7 +95,11 @@ export function StockNavigator({
                 </small>
               </span>
               <span className="stock-date-tag">
-                {realtimeMissing ? '日线回退' : stock.tradeDate ? stock.tradeDate.slice(5) : '--'}
+                {realtimeMissing
+                  ? '日线回退'
+                  : stock.tradeDate
+                    ? `${stock.isRealtime ? '实时 ' : ''}${stock.tradeDate.slice(5)}`
+                    : '--'}
               </span>
             </button>
           );

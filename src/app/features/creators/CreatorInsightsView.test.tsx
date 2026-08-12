@@ -210,7 +210,7 @@ describe('CreatorInsightsView', () => {
 
     const host = await renderView();
 
-    expect(host.textContent).toContain('博主观点');
+    expect(host.querySelector('.view-heading')).toBeNull();
     expect(host.textContent).toContain('监控博主');
     expect(host.textContent).toContain('847');
     expect(host.textContent).toContain('74.46');

@@ -374,8 +374,7 @@ button {
   border-bottom: 1px solid var(--terminal-border);
 }
 
-.panel-title-row h2,
-.view-heading h1 {
+.panel-title-row h2 {
   margin: 3px 0 0;
   color: var(--terminal-text);
   font-size: 17px;
@@ -1400,42 +1399,6 @@ button {
 .market-fall { color: var(--terminal-fall) !important; }
 .market-flat { color: var(--terminal-text) !important; }
 
-.view-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 3px 14px;
-}
-
-.view-heading h1 {
-  margin-top: 5px;
-  font-size: 21px;
-}
-
-.view-heading p {
-  margin: 5px 0 0;
-  color: var(--terminal-muted);
-  font-size: 12px;
-}
-
-.view-heading-stats {
-  display: flex;
-  gap: 7px;
-}
-
-.view-heading-stats span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 9px;
-  border: 1px solid var(--terminal-border);
-  border-radius: 6px;
-  color: var(--terminal-muted);
-  background: var(--terminal-panel-soft);
-  font-size: 11px;
-}
-
 .market-insights-view {
   height: 100%;
   overflow-y: auto;
@@ -1569,12 +1532,8 @@ button {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   padding: 0 5px;
-}
-
-.news-view-heading {
-  align-items: center;
 }
 
 .news-search-box {
@@ -1588,6 +1547,7 @@ button {
   border-radius: 7px;
   color: var(--terminal-muted);
   background: var(--terminal-panel-soft);
+  margin-left: auto;
 }
 
 .news-search-box:focus-within {
@@ -1666,7 +1626,6 @@ button {
 .news-sort-controls { gap: 7px; }
 
 .news-filter-summary {
-  margin-left: auto;
   color: var(--terminal-muted);
   font-size: 11px;
 }
@@ -1886,24 +1845,11 @@ button {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 10px;
   padding: 0 4px;
 }
 
-.creator-view-heading {
-  padding-bottom: 2px;
-}
-
-.creator-account-state {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--terminal-muted);
-  font-size: 11px;
-}
-
-.creator-account-state button,
 .creator-inline-error button,
 .creator-empty-state button,
 .creator-clear-filters,
@@ -1917,11 +1863,6 @@ button {
   background: var(--terminal-panel-soft);
   color: var(--terminal-text-soft);
   cursor: pointer;
-}
-
-.creator-account-state button {
-  padding: 4px 7px;
-  font-size: 10px;
 }
 
 .creator-overview-grid {
@@ -2703,11 +2644,10 @@ button {
   .market-insights-view,
   .news-intelligence-view,
   .creator-insights-view { padding: 0; }
-  .view-heading { align-items: flex-start; flex-direction: column; }
-  .news-search-box { width: 100%; }
+  .news-search-box { width: 100%; margin-left: 0; }
   .news-filter-bar { align-items: flex-start; flex-direction: column; gap: 7px; }
   .news-detail { padding: 14px; }
-  .creator-insights-view { min-height: 980px; grid-template-rows: auto auto auto auto minmax(0, 1fr); }
+  .creator-insights-view { min-height: 980px; grid-template-rows: auto auto auto minmax(0, 1fr); }
   .creator-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .creator-overview-card { min-height: 54px; padding: 8px 10px; }
   .creator-overview-card b { font-size: 17px; }

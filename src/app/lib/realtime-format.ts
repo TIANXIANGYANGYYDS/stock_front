@@ -105,6 +105,8 @@ export function orderMarketIndices(items: MarketIndexQuote[]): OrderedMarketInde
 export function mergeRealtimeStockItems(
   dailyItems: StockListItem[],
   realtimeItems: StockRealtimeQuote[],
+  realtimeTradingDate = '',
+  selected?: { quote: StockRealtimeQuote; tradingDate: string },
 ): StockListItem[] {
   const byCode = new Map<string, {
     price: number | null;
@@ -124,14 +126,51 @@ export function mergeRealtimeStockItems(
         : current.amount,
     });
   }
+  if (selected) {
+    const { quote } = selected;
+    byCode.set(quote.code, {
+      price: typeof quote.price === 'number' && Number.isFinite(quote.price)
+        ? quote.price
+        : null,
+      amount: typeof quote.amount === 'number' && Number.isFinite(quote.amount)
+        ? quote.amount
+        : null,
+    });
+  }
   return dailyItems.map((item) => {
     const realtime = byCode.get(item.code);
     if (!realtime) return item;
+    const itemRealtimeDate = selected?.quote.code === item.code
+      ? selected.tradingDate
+      : realtimeTradingDate;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(itemRealtimeDate)
+      && /^\d{4}-\d{2}-\d{2}$/.test(item.tradeDate)
+      && itemRealtimeDate < item.tradeDate) {
+      return item;
+    }
+    const realtimePrice = typeof realtime.price === 'number' && Number.isFinite(realtime.price)
+      ? realtime.price
+      : null;
+    const isNewTradingDate = Boolean(
+      realtimePrice !== null
+      && /^\d{4}-\d{2}-\d{2}$/.test(itemRealtimeDate)
+      && itemRealtimeDate > item.tradeDate,
+    );
+    const realtimeChangePercent = isNewTradingDate
+      && typeof item.close === 'number'
+      && Number.isFinite(item.close)
+      && item.close > 0
+      && realtimePrice !== null
+      ? ((realtimePrice - item.close) / item.close) * 100
+      : item.changePercent;
     return {
       ...item,
-      close: typeof realtime.price === 'number' && Number.isFinite(realtime.price)
-        ? realtime.price
+      ...(realtimePrice !== null ? { isRealtime: true } : {}),
+      tradeDate: isNewTradingDate ? itemRealtimeDate : item.tradeDate,
+      close: realtimePrice !== null
+        ? realtimePrice
         : item.close,
+      changePercent: realtimeChangePercent,
       amount: typeof realtime.amount === 'number' && Number.isFinite(realtime.amount)
         ? realtime.amount
         : item.amount,

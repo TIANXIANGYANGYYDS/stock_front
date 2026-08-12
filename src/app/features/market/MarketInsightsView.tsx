@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { BarChart3, Compass, Flame } from 'lucide-react';
 import { MarketAnalysis } from '../../components/MarketAnalysis';
 import { NewsHeatmap } from '../../components/NewsHeatmap';
 import { SectorTrend } from '../../components/SectorTrend';
 import type { RankingWindow } from '../../lib/api';
 
 interface MarketInsightsViewProps {
-  preferredTradeDate: string;
+  marketTradeDate: string;
+  analysisDate: string | null;
 }
 
 const RANKING_WINDOWS: Array<{ value: RankingWindow; label: string }> = [
@@ -16,7 +16,7 @@ const RANKING_WINDOWS: Array<{ value: RankingWindow; label: string }> = [
   { value: '7day', label: '7天' },
 ];
 
-export function MarketInsightsView({ preferredTradeDate }: MarketInsightsViewProps) {
+export function MarketInsightsView({ marketTradeDate, analysisDate }: MarketInsightsViewProps) {
   const [selectedSector, setSelectedSector] = useState<string | null>(null);
   const [rankingWindow, setRankingWindow] = useState<RankingWindow>('day');
 
@@ -27,20 +27,8 @@ export function MarketInsightsView({ preferredTradeDate }: MarketInsightsViewPro
 
   return (
     <main className="market-insights-view terminal-scroll">
-      <section className="view-heading">
-        <div>
-          <span className="eyebrow"><Compass size={12} /> MARKET INTELLIGENCE</span>
-          <h1>市场洞察</h1>
-          <p>从盘前主线、投资倾向和新闻热度识别市场共振方向</p>
-        </div>
-        <div className="view-heading-stats">
-          <span><Flame size={14} />主线追踪</span>
-          <span><BarChart3 size={14} />最新评分</span>
-        </div>
-      </section>
-
       <div className="market-analysis-lead legacy-panel-skin">
-        <MarketAnalysis preferredTradeDate={preferredTradeDate} />
+        <MarketAnalysis analysisDate={analysisDate} />
       </div>
 
       <div className="ranking-window-bar terminal-panel">
@@ -60,8 +48,8 @@ export function MarketInsightsView({ preferredTradeDate }: MarketInsightsViewPro
       </div>
 
       <div className="market-insights-grid">
-        <div className="legacy-panel-skin"><SectorTrend bizDate={preferredTradeDate} window={rankingWindow} onSectorClick={handleSectorClick} selectedSector={selectedSector} /></div>
-        <div className="legacy-panel-skin"><NewsHeatmap bizDate={preferredTradeDate} window={rankingWindow} onSectorClick={handleSectorClick} selectedSector={selectedSector} /></div>
+        <div className="legacy-panel-skin"><SectorTrend bizDate={marketTradeDate} window={rankingWindow} onSectorClick={handleSectorClick} selectedSector={selectedSector} /></div>
+        <div className="legacy-panel-skin"><NewsHeatmap bizDate={marketTradeDate} window={rankingWindow} onSectorClick={handleSectorClick} selectedSector={selectedSector} /></div>
       </div>
     </main>
   );

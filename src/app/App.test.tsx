@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
   .IS_REACT_ACT_ENVIRONMENT = true;
 
 const apiMocks = vi.hoisted(() => ({
-  getLatestTradeDate: vi.fn(),
+  getLatestMarketDates: vi.fn(),
   getMarketOverview: vi.fn(),
 }));
 
@@ -17,7 +17,7 @@ const realtimeMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('./lib/api', () => ({
-  getLatestTradeDate: apiMocks.getLatestTradeDate,
+  getLatestMarketDates: apiMocks.getLatestMarketDates,
   getMarketOverview: apiMocks.getMarketOverview,
 }));
 
@@ -35,6 +35,7 @@ vi.mock('./components/TerminalHeader', () => ({
   }) => (
     <header>
       terminal header {indicesError} index price {realtimeIndices?.items[0]?.price ?? '--'}
+      <button type="button" onClick={() => onViewChange('market')}>市场洞察</button>
       <button type="button" onClick={() => onViewChange('creators')}>博主观点</button>
     </header>
   ),
@@ -47,7 +48,17 @@ vi.mock('./features/decision/DecisionWorkspace', () => ({
 }));
 
 vi.mock('./features/market/MarketInsightsView', () => ({
-  MarketInsightsView: () => <main>market insights</main>,
+  MarketInsightsView: ({
+    marketTradeDate,
+    analysisDate,
+  }: {
+    marketTradeDate: string;
+    analysisDate: string | null;
+  }) => (
+    <main data-testid="market-insights">
+      market {marketTradeDate} analysis {analysisDate ?? 'latest'}
+    </main>
+  ),
 }));
 
 vi.mock('./features/news/NewsIntelligenceView', () => ({
@@ -61,7 +72,8 @@ vi.mock('./features/creators/CreatorInsightsView', () => ({
 import App from './App';
 
 afterEach(() => {
-  apiMocks.getLatestTradeDate.mockReset();
+  vi.useRealTimers();
+  apiMocks.getLatestMarketDates.mockReset();
   apiMocks.getMarketOverview.mockReset();
   realtimeMocks.useRealtimeMarketIndices.mockReset();
   document.body.innerHTML = '';
@@ -87,10 +99,37 @@ describe('App latest trading date gate', () => {
     });
   }
 
+  it('refreshes the latest market date without remounting the loading gate', async () => {
+    vi.useFakeTimers();
+    prepareIndices();
+    apiMocks.getLatestMarketDates
+      .mockResolvedValueOnce({ marketTradeDate: '2026-08-11', analysisDate: '2026-08-12' })
+      .mockResolvedValueOnce({ marketTradeDate: '2026-08-12', analysisDate: '2026-08-12' });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(<App />));
+    await act(async () => await Promise.resolve());
+    expect(host.textContent).toContain('workspace 2026-08-11');
+
+    await act(async () => vi.advanceTimersByTime(60_000));
+    await act(async () => await Promise.resolve());
+
+    expect(apiMocks.getLatestMarketDates).toHaveBeenCalledTimes(2);
+    expect(host.textContent).toContain('workspace 2026-08-12');
+    expect(host.textContent).not.toContain('正在解析 Stock_Project 最新交易日');
+
+    await act(async () => root.unmount());
+  });
+
   it('does not load or mount date-related data before the date endpoint resolves', async () => {
     prepareIndices();
-    let resolveDate!: (value: string | null) => void;
-    apiMocks.getLatestTradeDate.mockReturnValue(new Promise((resolve) => {
+    let resolveDate!: (value: {
+      marketTradeDate: string | null;
+      analysisDate: string | null;
+    }) => void;
+    apiMocks.getLatestMarketDates.mockReturnValue(new Promise((resolve) => {
       resolveDate = resolve;
     }));
     apiMocks.getMarketOverview.mockResolvedValue({
@@ -104,22 +143,60 @@ describe('App latest trading date gate', () => {
 
     expect(host.textContent).toContain('正在解析 Stock_Project 最新交易日');
     expect(host.querySelector('[data-testid="decision-workspace"]')).toBeNull();
-    expect(apiMocks.getLatestTradeDate).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getLatestMarketDates).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      resolveDate('2026-08-07');
+      resolveDate({
+        marketTradeDate: '2026-08-10',
+        analysisDate: '2026-08-11',
+      });
       await Promise.resolve();
     });
 
-    expect(host.textContent).toContain('workspace 2026-08-07');
+    expect(host.textContent).toContain('workspace 2026-08-10');
     expect(apiMocks.getMarketOverview).not.toHaveBeenCalled();
+
+    const marketButton = [...host.querySelectorAll('button')].find(
+      (item) => item.textContent?.includes('市场洞察'),
+    );
+    if (!marketButton) throw new Error('Missing market workspace button');
+    await act(async () => marketButton.click());
+
+    expect(host.textContent).toContain('market 2026-08-10 analysis 2026-08-11');
+
+    await act(async () => root.unmount());
+  });
+
+  it('keeps an empty analysis date separate from the market trade date', async () => {
+    prepareIndices();
+    apiMocks.getLatestMarketDates.mockResolvedValue({
+      marketTradeDate: '2026-08-10',
+      analysisDate: null,
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<App />));
+
+    const marketButton = [...host.querySelectorAll('button')].find(
+      (item) => item.textContent?.includes('市场洞察'),
+    );
+    if (!marketButton) throw new Error('Missing market workspace button');
+    await act(async () => marketButton.click());
+
+    expect(host.textContent).toContain('market 2026-08-10 analysis latest');
+    expect(host.textContent).not.toContain('analysis 2026-08-10');
 
     await act(async () => root.unmount());
   });
 
   it('stops initialization when the market endpoint returns a null date', async () => {
     prepareIndices();
-    apiMocks.getLatestTradeDate.mockResolvedValue(null);
+    apiMocks.getLatestMarketDates.mockResolvedValue({
+      marketTradeDate: null,
+      analysisDate: '2026-08-11',
+    });
 
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -134,7 +211,7 @@ describe('App latest trading date gate', () => {
 
   it('shows an explicit error and stops initialization when the date request fails', async () => {
     prepareIndices();
-    apiMocks.getLatestTradeDate.mockRejectedValue(new Error('接口请求失败: 503'));
+    apiMocks.getLatestMarketDates.mockRejectedValue(new Error('接口请求失败: 503'));
 
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -149,7 +226,7 @@ describe('App latest trading date gate', () => {
 
   it('opens realtime creator intelligence without waiting for the trading date gate', async () => {
     prepareIndices();
-    apiMocks.getLatestTradeDate.mockReturnValue(new Promise(() => undefined));
+    apiMocks.getLatestMarketDates.mockReturnValue(new Promise(() => undefined));
 
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -170,7 +247,7 @@ describe('App latest trading date gate', () => {
 
   it('shows realtime indices while the latest trading date is still pending', async () => {
     prepareIndices();
-    apiMocks.getLatestTradeDate.mockReturnValue(new Promise(() => undefined));
+    apiMocks.getLatestMarketDates.mockReturnValue(new Promise(() => undefined));
 
     const host = document.createElement('div');
     document.body.appendChild(host);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildCurrentDayChartBars,
   buildIndicatorData,
   buildMovingAverageData,
   buildVolumeMovingAverageData,
@@ -9,6 +10,25 @@ import {
   getAvailableMaKeys,
   normalizeChartBars,
 } from './chart-data';
+import type { StockIntradayBar, StockRealtimeQuote } from '../../lib/api';
+
+const realtimeQuote: StockRealtimeQuote = {
+  code: '300308', name: '中际旭创', market: 'SZ', price: 918.38,
+  sourceTime: '2026-08-12T10:00:00+08:00',
+  receivedAt: '2026-08-12T10:00:01+08:00',
+  volume: 300, amount: 274_000, provider: 'TENCENT',
+};
+
+function minuteBar(
+  timestamp: string,
+  overrides: Partial<StockIntradayBar> = {},
+): StockIntradayBar {
+  return {
+    code: '300308', name: '中际旭创', market: 'SZ', tradeDate: '2026-08-12',
+    interval: '1m', timestamp, open: 905, high: 912, low: 903, close: 910,
+    volume: 100, amount: 90_000, provider: 'TENCENT', ...overrides,
+  };
+}
 
 describe('normalizeChartBars', () => {
   it('filters invalid OHLC values, sorts dates, and keeps the last duplicate', () => {
@@ -24,6 +44,83 @@ describe('normalizeChartBars', () => {
       ['2026-01-02', 12, 6],
       ['2026-01-03', 12, 8],
     ]);
+  });
+});
+
+describe('buildCurrentDayChartBars', () => {
+  const dailyBars = [{
+    date: '2026-08-11', open: 880, high: 910, low: 875, close: 900,
+    volume: 1_000, amount: 900_000,
+  }];
+
+  it('aggregates real minute OHLC into one temporary current-day daily bar', () => {
+    const result = buildCurrentDayChartBars(
+      dailyBars,
+      [
+        minuteBar('2026-08-12T09:31:00+08:00', {
+          open: 910, high: 920, low: 909, close: 916, volume: 200, amount: 184_000,
+        }),
+        minuteBar('2026-08-12T09:30:00+08:00'),
+      ],
+      realtimeQuote,
+      '2026-08-12',
+    );
+
+    expect(result).toHaveLength(2);
+    expect(result[1]).toMatchObject({
+      time: '2026-08-12',
+      open: 905,
+      high: 920,
+      low: 903,
+      close: 916,
+      volume: 300,
+      amount: 274_000,
+    });
+    expect(result[1]?.changeAmount).toBeCloseTo(16, 8);
+    expect(result[1]?.changePercent).toBeCloseTo(1.7777777777777777, 8);
+    expect(result[1]?.ma).toBeUndefined();
+    expect(result[1]?.macd).toBeUndefined();
+  });
+
+  it('does not fabricate a daily candle from only one realtime price', () => {
+    expect(buildCurrentDayChartBars(
+      dailyBars,
+      [],
+      realtimeQuote,
+      '2026-08-12',
+    )).toEqual(normalizeChartBars(dailyBars));
+  });
+
+  it('keeps the official daily candle when it already contains the realtime date', () => {
+    const officialToday = {
+      date: '2026-08-12', open: 906, high: 925, low: 902, close: 919,
+      volume: 500, amount: 460_000,
+    };
+    const result = buildCurrentDayChartBars(
+      [...dailyBars, officialToday],
+      [minuteBar('2026-08-12T09:30:00+08:00')],
+      realtimeQuote,
+      '2026-08-12',
+    );
+
+    expect(result).toHaveLength(2);
+    expect(result[1]).toMatchObject({
+      time: '2026-08-12', open: 906, high: 925, low: 902, close: 919,
+    });
+  });
+
+  it('does not append minute data from a date older than the latest official candle', () => {
+    const result = buildCurrentDayChartBars(
+      [{
+        date: '2026-08-12', open: 906, high: 925, low: 902, close: 919,
+      }],
+      [minuteBar('2026-08-11T09:30:00+08:00', { tradeDate: '2026-08-11' })],
+      realtimeQuote,
+      '2026-08-11',
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.time).toBe('2026-08-12');
   });
 });
 

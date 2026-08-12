@@ -236,6 +236,96 @@ afterEach(() => {
 });
 
 describe('ProfessionalCandlestickChart interactions', () => {
+  it('renders a real intraday aggregate as the temporary latest daily candle', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart
+        stock={stock}
+        realtimeData={realtimeResponse}
+        intradayData={intradayResponse}
+        intradayInterval="60m"
+      />,
+    ));
+
+    const chart = chartHarness.charts[0];
+    const candleSeries = chart.addSeries.mock.results[0]?.value;
+    expect(candleSeries.setData).toHaveBeenLastCalledWith([
+      expect.objectContaining({ time: '2026-08-07', close: 10 }),
+      expect.objectContaining({ time: '2026-08-08', close: 10.8 }),
+      {
+        time: '2026-08-10',
+        open: 10.7,
+        high: 10.95,
+        low: 10.68,
+        close: 10.92,
+      },
+    ]);
+    expect(host.querySelector('.trade-date-chip')?.textContent).toContain('2026-08-10');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('实时涨跌 +3.98%');
+    expect(host.querySelector('.stock-live-state')?.textContent).toContain('盘中临时日 K');
+    expect(host.querySelector('.ohlc-legend')?.textContent).toContain('2026-08-10');
+    expect(host.querySelector('.ohlc-legend')?.textContent).toContain('开 10.70');
+    expect(host.querySelector('.ohlc-legend')?.textContent).toContain('收 10.92');
+
+    await act(async () => root.unmount());
+  });
+
+  it('keeps official daily candles unchanged when only a realtime price is available', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart stock={stock} realtimeData={realtimeResponse} />,
+    ));
+
+    const chart = chartHarness.charts[0];
+    const candleSeries = chart.addSeries.mock.results[0]?.value;
+    expect(candleSeries.setData).toHaveBeenLastCalledWith([
+      expect.objectContaining({ time: '2026-08-07', close: 10 }),
+      expect.objectContaining({ time: '2026-08-08', close: 10.8 }),
+    ]);
+    expect(host.querySelector('.trade-date-chip')?.textContent).toContain('2026-08-10');
+    expect(host.querySelector('.stock-live-state')?.textContent).not.toContain('盘中临时日 K');
+
+    await act(async () => root.unmount());
+  });
+
+  it('does not let an older realtime snapshot override a newer official daily close', async () => {
+    const officialToday: SectorStock = {
+      ...stock,
+      tradeDate: '2026-08-12',
+      close: 12,
+      changeAmount: 1.2,
+      changePercent: 11.11,
+      kline: [...stock.kline, {
+        date: '2026-08-12', open: 11, high: 12.2, low: 10.9, close: 12,
+      }],
+    };
+    const staleRealtime: StockRealtimeResponse = {
+      ...realtimeResponse,
+      tradingDate: '2026-08-11',
+      items: [{ ...realtimeQuote, price: 11.23 }],
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart stock={officialToday} realtimeData={staleRealtime} />,
+    ));
+
+    expect(host.querySelector('.trade-date-chip')?.textContent).toContain('2026-08-12');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('12.00');
+    expect(host.querySelector('.stock-price-row')?.textContent).not.toContain('11.23');
+    expect(host.querySelector('.stock-price-row')?.textContent).not.toContain('实时价');
+
+    await act(async () => root.unmount());
+  });
+
   it('uses realtime price only at the latest daily position and historical close under crosshair', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -252,7 +342,7 @@ describe('ProfessionalCandlestickChart interactions', () => {
     expect(host.querySelector('.stock-price-row')?.textContent).toContain('11.23');
     expect(host.querySelector('.stock-price-row > span')?.className).toBe('market-rise');
     expect(host.querySelector('.stock-price-row')?.textContent).toContain('实时价');
-    expect(host.textContent).toContain('日线涨跌 +8.00%');
+    expect(host.textContent).toContain('实时涨跌 +3.98%');
 
     const move = chartHarness.getCrosshairMove();
     if (!move) throw new Error('Crosshair handler was not registered');
@@ -669,7 +759,11 @@ describe('ProfessionalCandlestickChart interactions', () => {
       root.render(<ProfessionalCandlestickChart stock={stock} />);
     });
 
-    const chartOptions = chartHarness.createChart.mock.calls[0]?.[1];
+    const chartOptions = (chartHarness.createChart.mock.calls[0] as unknown as [
+      HTMLElement,
+      { localization: { locale: string; dateFormat: string } },
+    ] | undefined)?.[1];
+    if (!chartOptions) throw new Error('Missing chart options');
     expect(chartOptions.localization).toEqual({
       locale: 'zh-CN',
       dateFormat: 'yyyy-MM-dd',
@@ -710,7 +804,14 @@ describe('ProfessionalCandlestickChart interactions', () => {
       root.render(<ProfessionalCandlestickChart stock={navigationStock} />);
     });
 
-    const chartOptions = chartHarness.createChart.mock.calls[0]?.[1];
+    const chartOptions = (chartHarness.createChart.mock.calls[0] as unknown as [
+      HTMLElement,
+      {
+        handleScale: { mouseWheel: boolean };
+        handleScroll: { mouseWheel: boolean; vertTouchDrag: boolean };
+      },
+    ] | undefined)?.[1];
+    if (!chartOptions) throw new Error('Missing chart options');
     expect(chartOptions.handleScale).toMatchObject({ mouseWheel: false });
     expect(chartOptions.handleScroll).toMatchObject({ mouseWheel: false, vertTouchDrag: false });
     expect(host.querySelector('.chart-fixed-header')).not.toBeNull();

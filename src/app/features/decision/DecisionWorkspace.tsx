@@ -6,7 +6,10 @@ import {
   type SectorStock,
   type StockListItem,
 } from '../../lib/api';
-import { mergeRealtimeStockItems } from '../../lib/realtime-format';
+import {
+  mergeRealtimeStockItems,
+  selectRealtimeStockQuote,
+} from '../../lib/realtime-format';
 import {
   useRealtimeStock,
   useRealtimeStocks,
@@ -49,18 +52,61 @@ export function DecisionWorkspace({
   const normalizedQuery = query.trim();
   const batchRealtime = useRealtimeStocks(stockItems.map((item) => item.code));
   const selectedRealtime = useRealtimeStock(selectedStockCode);
+  const selectedQuote = useMemo(
+    () => selectRealtimeStockQuote(
+      selectedRealtime.data?.items ?? [],
+      selectedStockCode,
+    ),
+    [selectedRealtime.data?.items, selectedStockCode],
+  );
+  const selectedListItem = stockItems.find((item) => item.code === selectedStockCode) ?? null;
+  const currentSelectedStock = selectedStock?.code === selectedStockCode
+    ? selectedStock
+    : null;
+  const realtimeTradingDate = selectedRealtime.data?.tradingDate ?? '';
+  const officialTradeDate = currentSelectedStock?.tradeDate
+    || selectedListItem?.tradeDate
+    || preferredTradeDate;
+  const intradayTradeDate = realtimeTradingDate > officialTradeDate
+    ? realtimeTradingDate
+    : preferredTradeDate;
+  const needsTemporaryDailyBar = Boolean(
+    selectedQuote
+    && realtimeTradingDate > officialTradeDate,
+  );
+  const requestedIntradayInterval = chartMode === 'daily' && needsTemporaryDailyBar
+    ? '1m'
+    : intradayInterval;
   const intraday = useStockIntraday({
     code: selectedStockCode,
-    tradeDate: preferredTradeDate,
-    interval: intradayInterval,
-    enabled: chartMode === 'intraday',
+    tradeDate: intradayTradeDate,
+    interval: requestedIntradayInterval,
+    enabled: chartMode === 'intraday' || needsTemporaryDailyBar,
     marketStatus: selectedRealtime.data?.marketStatus ?? 'open',
   });
   const displayedStockItems = useMemo(
-    () => mergeRealtimeStockItems(stockItems, batchRealtime.data?.items ?? []),
-    [batchRealtime.data?.items, stockItems],
+    () => mergeRealtimeStockItems(
+      stockItems,
+      batchRealtime.data?.items ?? [],
+      batchRealtime.data?.tradingDate ?? '',
+      selectedQuote
+        ? { quote: selectedQuote, tradingDate: realtimeTradingDate }
+        : undefined,
+    ),
+    [
+      batchRealtime.data?.items,
+      batchRealtime.data?.tradingDate,
+      realtimeTradingDate,
+      selectedQuote,
+      stockItems,
+    ],
   );
-  const selectedListItem = stockItems.find((item) => item.code === selectedStockCode) ?? null;
+  const effectiveMissingCodes = useMemo(
+    () => (selectedQuote
+      ? (batchRealtime.data?.missingCodes ?? []).filter((code) => code !== selectedStockCode)
+      : batchRealtime.data?.missingCodes ?? []),
+    [batchRealtime.data?.missingCodes, selectedQuote, selectedStockCode],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -128,14 +174,14 @@ export function DecisionWorkspace({
         selectedCode={selectedStockCode}
         loading={listLoading}
         error={listError}
-        missingCodes={batchRealtime.data?.missingCodes ?? []}
+        missingCodes={effectiveMissingCodes}
         realtimeDelayed={batchRealtime.delayed}
         realtimeError={batchRealtime.error}
         onQueryChange={setQuery}
         onSelect={setSelectedStockCode}
       />
       <ProfessionalCandlestickChart
-        stock={selectedStock}
+        stock={currentSelectedStock}
         stockCode={selectedStockCode}
         stockName={selectedListItem?.name ?? ''}
         loading={detailLoading}
@@ -154,8 +200,8 @@ export function DecisionWorkspace({
         onActiveDateChange={setActiveDate}
       />
       <DecisionPanel
-        stock={selectedStock}
-        bar={selectSnapshotBar(selectedStock, activeDate)}
+        stock={currentSelectedStock}
+        bar={selectSnapshotBar(currentSelectedStock, activeDate)}
         loading={detailLoading}
       />
       {detailError && <div className="workspace-floating-error">{detailError}</div>}

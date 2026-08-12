@@ -111,7 +111,7 @@ export function TerminalHeader({
       <div className="market-index-strip">
         <div className="market-session">
           <span>
-            <Sparkles size={13} />大盘指数
+            <Sparkles size={13} />大盘指数 · 行情数据日期
             {realtimeIndices && <em>{marketStatusLabel(realtimeIndices.marketStatus)}</em>}
           </span>
           <strong>{realtimeIndices?.tradingDate || tradeDate || '--'}</strong>

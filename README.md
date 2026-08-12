@@ -6,6 +6,7 @@
 
 - 专业 K 线：可切换日线与分钟线，支持红涨绿跌、十字光标、区间缩放和全屏；MA/BOLL 按真实字段显示，成交量、MACD、KDJ、RSI、CCI、WR、ATR 可同时开启多个副图且不重建主图
 - 实时个股：个股实时路由只提供最新价格快照；分钟 K 独立请求当日 intraday 路由，支持 1、5、15、30、60、120 分钟六档周期，前端不累计历史、不从快照合成 K 线
+- 盘中日线：实时交易日比已入库日线更新时，列表与标题显示实时日期、实时价和基于昨收的实时涨跌；日线图只用真实分钟 OHLC 聚合“盘中临时日 K”，正式今日日线上线后自动替换，只有单一实时价格时不伪造蜡烛
 - 个股导航：按最新交易日成交额展示股票池，支持代码/名称检索，选择后只更新该股票的行情、K 线和指标
 - 行情快照：随十字光标交易日同步 OHLC、涨跌、成交、换手和全部可用技术指标；展示获利比例、平均成本、70%/90%成本区间及后端筹码 XY 分布图
 - 市场洞察：Stock_Project 盘前分析以详情弹窗阅读；投资倾向和新闻热力均支持 1 小时、1 天、3 天、7 天快照窗口
@@ -31,7 +32,7 @@ npm run build
 
 前端统一请求 `/backend-api`，Vite 开发服务器会移除该前缀并代理到 `VITE_API_PROXY_TARGET`。本地覆盖目标时在 `.env.local` 配置该变量即可，无需也不应在业务代码中硬编码后端主机；未覆盖时沿用 `vite.config.ts` 中的现有默认值。
 
-行情工作区唯一业务日期来自 `GET /api/v1/market/latest-trade-date` 的 `data.latest_trade_date`。该请求完成前不会挂载行情、板块排行、盘前分析或资讯查询；返回空值或请求失败时会停止后续日期请求并展示明确状态，不会使用 `/stats`、`latest` 路由或浏览器当天日历日期回退。博主观点属于周末和收盘后仍会更新的实时内容，可独立进入，并按作品实际发布时间筛选，不受最新交易日截断。
+日期接口 `GET /api/v1/market/latest-trade-date` 同时提供两类独立日期：`data.latest_trade_date` 是已入库日线的最新交易日，供行情、板块排行、资讯和个股历史日线使用；`data.latest_analysis_date` 是最新盘前分析日期，允许比行情日期晚一天。盘前分析优先请求该显式日期，字段缺失或为空时只回退到 `/morning-analyses/latest`，不会使用行情交易日代替。首次日期请求完成前不会挂载行情、板块排行、盘前分析或资讯查询；随后前端每 60 秒刷新一次，刷新失败时保留最近成功日期。行情日期为空或首次请求失败时会停止后续行情日期请求并展示明确状态，不会使用 `/stats` 或浏览器当天日历日期回退。博主观点属于周末和收盘后仍会更新的实时内容，可独立进入，并按作品实际发布时间筛选，不受最新交易日截断。
 
 当前接入 `Stock_Project` 的只读接口：
 
@@ -39,7 +40,8 @@ npm run build
 - `GET /api/v1/stats`
 - `GET /api/v1/news`
 - `GET /api/v1/news-rankings?biz_date={trade_date}`
-- `GET /api/v1/morning-analyses/{trade_date}`
+- `GET /api/v1/morning-analyses/{analysis_date}`
+- `GET /api/v1/morning-analyses/latest`
 - `GET /api/v1/stocks`
 - `GET /api/v1/stocks/{code}/daily`
 - `GET /api/v1/stock-daily/{trade_date}`

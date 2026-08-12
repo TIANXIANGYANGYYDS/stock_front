@@ -1,4 +1,8 @@
-import type { StockKlineBar } from '../../lib/api';
+import type {
+  StockIntradayBar,
+  StockKlineBar,
+  StockRealtimeQuote,
+} from '../../lib/api';
 
 export interface ChartBar extends Omit<StockKlineBar, 'amount' | 'volume'> {
   time: string;
@@ -30,6 +34,57 @@ export function normalizeChartBars(input: StockKlineBar[]): ChartBar[] {
   });
 
   return [...byDate.values()].sort((left, right) => left.time.localeCompare(right.time));
+}
+
+function finiteNonNegative(value: number | null | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+export function buildCurrentDayChartBars(
+  dailyBars: StockKlineBar[],
+  intradayBars: StockIntradayBar[],
+  _realtimeQuote: StockRealtimeQuote | null,
+  realtimeTradingDate: string,
+): ChartBar[] {
+  const official = normalizeChartBars(dailyBars);
+  const latestOfficialDate = official.at(-1)?.time ?? '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(realtimeTradingDate)
+    || realtimeTradingDate <= latestOfficialDate) {
+    return official;
+  }
+  const validMinuteBars = intradayBars
+    .filter((bar) => bar.tradeDate === realtimeTradingDate
+      && [bar.open, bar.high, bar.low, bar.close].every(
+        (value) => typeof value === 'number' && Number.isFinite(value) && value > 0,
+      ))
+    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
+  if (validMinuteBars.length === 0) return official;
+
+  const first = validMinuteBars[0];
+  const last = validMinuteBars.at(-1);
+  if (!first || !last) return official;
+  const close = last.close as number;
+  const minuteHigh = Math.max(...validMinuteBars.map((bar) => bar.high as number));
+  const minuteLow = Math.min(...validMinuteBars.map((bar) => bar.low as number));
+  const previousClose = official.at(-1)?.close;
+  const changeAmount = typeof previousClose === 'number' && previousClose > 0
+    ? close - previousClose
+    : null;
+  const changePercent = changeAmount !== null && typeof previousClose === 'number'
+    ? (changeAmount / previousClose) * 100
+    : null;
+  const temporary: StockKlineBar = {
+    date: realtimeTradingDate,
+    open: first.open as number,
+    high: minuteHigh,
+    low: minuteLow,
+    close,
+    volume: validMinuteBars.reduce((sum, bar) => sum + finiteNonNegative(bar.volume), 0),
+    amount: validMinuteBars.reduce((sum, bar) => sum + finiteNonNegative(bar.amount), 0),
+    changeAmount,
+    changePercent,
+  };
+  return [...official, ...normalizeChartBars([temporary])];
 }
 
 export function buildMovingAverageData(
@@ -85,7 +140,7 @@ export function buildIndicatorData(
   key: string,
 ): Array<{ time: string; value: number }> {
   return bars.flatMap((bar) => {
-    const values = bar[group] as Record<string, number | null> | null | undefined;
+    const values = bar[group] as unknown as Record<string, number | null> | null | undefined;
     const value = values?.[key];
     return typeof value === 'number' && Number.isFinite(value)
       ? [{ time: bar.time, value }]
