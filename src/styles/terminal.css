@@ -447,7 +447,7 @@ button {
   justify-content: space-between;
   padding: 0 10px;
   color: var(--terminal-muted);
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.3px;
 }
 
@@ -652,7 +652,7 @@ button {
 .stock-name-code small {
   margin-top: 3px;
   color: var(--terminal-faint);
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .sector-rank-value {
@@ -670,7 +670,7 @@ button {
   align-items: center;
   gap: 2px;
   margin-top: 2px;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .radar-stock-item {
@@ -692,7 +692,7 @@ button {
 
 .stock-list-price small {
   margin-top: 3px;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .stock-date-tag {
@@ -700,7 +700,7 @@ button {
   border: 1px solid var(--terminal-border-strong);
   border-radius: 4px;
   color: var(--terminal-muted);
-  font-size: 8px;
+  font-size: 9px;
   text-align: center;
 }
 
@@ -2331,7 +2331,7 @@ button {
   border-radius: 3px;
   background: rgba(245, 185, 66, .07);
   color: var(--terminal-warning);
-  font-size: 9px;
+  font-size: 10px;
   font-style: normal;
 }
 
@@ -2354,7 +2354,7 @@ button {
   border-bottom: 1px solid var(--terminal-border);
   color: var(--terminal-faint);
   background: rgba(9, 16, 25, .52);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .creator-work-card {
@@ -2496,7 +2496,7 @@ button {
 
 .creator-detail-heading > span {
   color: var(--terminal-accent);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: .5px;
 }
@@ -2521,7 +2521,7 @@ button {
 .creator-detail-heading > div {
   justify-content: space-between;
   color: var(--terminal-faint);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .creator-detail-heading a {
@@ -2577,7 +2577,7 @@ button {
 
 .creator-ai-summary small {
   color: var(--terminal-faint);
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .creator-opinion-detail-list {
@@ -2635,7 +2635,7 @@ button {
   border: 1px solid var(--terminal-border);
   border-radius: 4px;
   color: var(--terminal-muted);
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .creator-opinion-conditions,
@@ -2643,7 +2643,7 @@ button {
 .creator-verification-reason {
   margin-top: 9px;
   color: var(--terminal-muted);
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.6;
 }
 
@@ -2666,7 +2666,7 @@ button {
   border-left: 2px solid var(--terminal-border-strong);
   background: rgba(255, 255, 255, .018);
   color: #8998ac;
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
