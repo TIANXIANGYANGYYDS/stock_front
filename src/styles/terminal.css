@@ -59,14 +59,14 @@ button {
 .terminal-header {
   height: 112px;
   border-bottom: 1px solid var(--terminal-border);
-  background: rgba(10, 17, 27, 0.94);
-  backdrop-filter: blur(16px);
+  background: rgba(8, 15, 24, 0.96);
+  backdrop-filter: blur(12px);
 }
 
 .terminal-topbar {
   height: 58px;
   display: grid;
-  grid-template-columns: 252px minmax(420px, 1fr) auto;
+  grid-template-columns: 240px minmax(430px, 1fr) auto;
   align-items: center;
   gap: 18px;
   padding: 0 18px;
@@ -87,7 +87,7 @@ button {
   color: #031018;
   border-radius: 8px;
   background: linear-gradient(145deg, #58ddff, #249ccf);
-  box-shadow: 0 0 24px rgba(53, 201, 243, 0.18);
+  box-shadow: 0 0 18px rgba(49, 199, 237, 0.14);
 }
 
 .terminal-brand strong,
@@ -119,6 +119,7 @@ button {
   align-items: center;
   gap: 7px;
   min-width: 108px;
+  min-height: 40px;
   padding: 0 16px;
   border: 0;
   background: transparent;
@@ -140,12 +141,12 @@ button {
 .terminal-nav button:hover,
 .terminal-nav button.is-active {
   color: var(--terminal-text);
-  background: linear-gradient(to bottom, transparent, rgba(53, 201, 243, 0.05));
+  background: rgba(49, 199, 237, 0.045);
 }
 
 .terminal-nav button.is-active::after {
   background: var(--terminal-accent);
-  box-shadow: 0 0 12px rgba(53, 201, 243, 0.5);
+  box-shadow: none;
 }
 
 .terminal-actions {
@@ -155,35 +156,13 @@ button {
   gap: 8px;
 }
 
-.terminal-search-hint,
-.api-state,
-.icon-button {
+.api-state {
   height: 32px;
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--terminal-border);
-  border-radius: 7px;
+  border-radius: var(--terminal-control-radius);
   background: var(--terminal-panel-soft);
-}
-
-.terminal-search-hint {
-  min-width: 164px;
-  gap: 7px;
-  padding: 0 8px;
-  color: var(--terminal-faint);
-  font-size: 12px;
-}
-
-.terminal-search-hint span {
-  flex: 1;
-}
-
-.terminal-search-hint kbd {
-  padding: 2px 5px;
-  border: 1px solid #2c3a4d;
-  border-radius: 4px;
-  color: var(--terminal-muted);
-  font-size: 9px;
 }
 
 .api-state {
@@ -197,22 +176,10 @@ button {
   color: var(--terminal-rise);
 }
 
-.icon-button {
-  width: 32px;
-  justify-content: center;
-  color: var(--terminal-muted);
-  cursor: pointer;
-}
-
-.icon-button:hover {
-  color: var(--terminal-text);
-  border-color: var(--terminal-border-strong);
-}
-
 .market-index-strip {
   height: 54px;
   display: grid;
-  grid-template-columns: 252px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   align-items: stretch;
   padding: 0 18px;
 }
@@ -237,22 +204,23 @@ button {
 .market-session span em {
   padding: 1px 4px;
   border: 1px solid rgba(53, 201, 243, .2);
-  border-radius: 999px;
+  border-radius: var(--terminal-tag-radius);
   color: var(--terminal-accent);
-  font-size: 8px;
+  font-size: 10px;
   font-style: normal;
   white-space: nowrap;
 }
 
 .market-session strong {
   color: var(--terminal-text-soft);
+  font-family: var(--terminal-mono);
   font-size: 13px;
 }
 
 .market-session small {
   grid-column: 1 / 3;
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .market-session small.is-delayed {
@@ -287,7 +255,8 @@ button {
 .index-ticker > span small {
   margin-left: 5px;
   color: var(--terminal-faint);
-  font-size: 9px;
+  font-family: var(--terminal-mono);
+  font-size: 10px;
 }
 
 .index-ticker > b {
@@ -296,6 +265,7 @@ button {
   align-self: center;
   font-size: 15px;
   font-weight: 600;
+  font-family: var(--terminal-mono);
   white-space: nowrap;
 }
 
@@ -303,7 +273,8 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 10px;
+  font-family: var(--terminal-mono);
+  font-size: 11px;
   font-style: normal;
   white-space: nowrap;
 }
