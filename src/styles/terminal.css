@@ -206,7 +206,7 @@ button {
   border: 1px solid rgba(53, 201, 243, .2);
   border-radius: var(--terminal-tag-radius);
   color: var(--terminal-accent);
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
   white-space: nowrap;
 }
@@ -220,7 +220,7 @@ button {
 .market-session small {
   grid-column: 1 / 3;
   color: var(--terminal-faint);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .market-session small.is-delayed {
@@ -256,7 +256,7 @@ button {
   margin-left: 5px;
   color: var(--terminal-faint);
   font-family: var(--terminal-mono);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .index-ticker > b {
@@ -274,7 +274,7 @@ button {
   align-items: center;
   gap: 3px;
   font-family: var(--terminal-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   white-space: nowrap;
 }
@@ -447,7 +447,7 @@ button {
   justify-content: space-between;
   padding: 0 10px;
   color: var(--terminal-muted);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.3px;
 }
 
@@ -579,7 +579,7 @@ button {
 
 .navigator-stock-row .stock-name-code strong { font-size: 13px; }
 .navigator-stock-row .stock-name-code small,
-.navigator-stock-row .stock-list-price small { font-size: 10px; }
+.navigator-stock-row .stock-list-price small { font-size: 12px; }
 .navigator-stock-row .stock-list-price b { font-size: 12px; }
 
 .decision-grid { position: relative; }
@@ -652,7 +652,7 @@ button {
 .stock-name-code small {
   margin-top: 3px;
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .sector-rank-value {
@@ -670,7 +670,7 @@ button {
   align-items: center;
   gap: 2px;
   margin-top: 2px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .radar-stock-item {
@@ -692,7 +692,7 @@ button {
 
 .stock-list-price small {
   margin-top: 3px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .stock-date-tag {
@@ -700,7 +700,7 @@ button {
   border: 1px solid var(--terminal-border-strong);
   border-radius: 4px;
   color: var(--terminal-muted);
-  font-size: 9px;
+  font-size: 11px;
   text-align: center;
 }
 
@@ -1067,7 +1067,7 @@ button {
   border: 1px solid var(--terminal-border-strong);
   border-radius: var(--terminal-tag-radius);
   color: var(--terminal-accent);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .snapshot-source.is-linked {
@@ -1155,7 +1155,7 @@ button {
   border-radius: var(--terminal-control-radius);
   background: var(--terminal-panel-soft);
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .snapshot-grid b {
@@ -1191,7 +1191,7 @@ button {
   border-radius: var(--terminal-control-radius);
   background: var(--terminal-panel-soft);
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .chip-section { padding-bottom: 16px; }
@@ -1219,7 +1219,7 @@ button {
 
 .chip-cost-card span {
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .chip-cost-card b {
@@ -1233,7 +1233,7 @@ button {
 .chip-cost-card small {
   margin-top: 4px;
   color: var(--terminal-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .chip-distribution {
@@ -1353,7 +1353,7 @@ button {
   gap: 5px;
   padding: 10px;
   color: #5c6d82;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
   text-align: center;
 }
@@ -2198,7 +2198,7 @@ button {
 
 .creator-panel-head small {
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .creator-ranking-panel,
@@ -2294,14 +2294,14 @@ button {
   gap: 4px;
   margin-top: 4px;
   color: var(--terminal-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .creator-rank-main em {
   margin-top: 4px;
   overflow: hidden;
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2321,7 +2321,7 @@ button {
 .creator-rank-score small {
   margin-top: 2px;
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .creator-rank-score em {
@@ -2354,7 +2354,7 @@ button {
   border-bottom: 1px solid var(--terminal-border);
   color: var(--terminal-faint);
   background: rgba(9, 16, 25, .52);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .creator-work-card {
@@ -2385,12 +2385,12 @@ button {
   align-items: center;
   gap: 7px;
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .creator-work-meta b {
   color: var(--terminal-text-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -2439,7 +2439,7 @@ button {
   border-radius: 4px;
   color: var(--terminal-muted);
   background: var(--terminal-control);
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
 }
 
@@ -2462,7 +2462,7 @@ button {
 
 .creator-work-count {
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .creator-load-more {
@@ -2496,7 +2496,7 @@ button {
 
 .creator-detail-heading > span {
   color: var(--terminal-accent);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: .5px;
 }
@@ -2521,7 +2521,7 @@ button {
 .creator-detail-heading > div {
   justify-content: space-between;
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .creator-detail-heading a {
@@ -2577,7 +2577,7 @@ button {
 
 .creator-ai-summary small {
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .creator-opinion-detail-list {
@@ -2635,7 +2635,7 @@ button {
   border: 1px solid var(--terminal-border);
   border-radius: 4px;
   color: var(--terminal-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .creator-opinion-conditions,
@@ -2643,7 +2643,7 @@ button {
 .creator-verification-reason {
   margin-top: 9px;
   color: var(--terminal-muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.6;
 }
 
@@ -2666,7 +2666,7 @@ button {
   border-left: 2px solid var(--terminal-border-strong);
   background: rgba(255, 255, 255, .018);
   color: #8998ac;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
@@ -2800,7 +2800,7 @@ button {
   }
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1120px) {
   body { overflow: auto; }
   .terminal-header { height: auto; }
   .terminal-topbar { height: auto; min-height: 58px; grid-template-columns: 190px minmax(420px, 1fr) auto; overflow-x: auto; }
@@ -2832,7 +2832,13 @@ button {
   .panel-title-row h2 { font-size: 15px; }
   .stock-quote-head { align-items: stretch; flex-direction: column; gap: 9px; }
   .chart-periods { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .chart-periods button { width: 100%; }
+  .chart-periods button { width: 100%; min-height: 40px; }
+  .chart-tools button,
+  .chart-navigation-controls button,
+  .intraday-intervals button,
+  .creator-detail-close,
+  .creator-detail-tabs button { min-width: 40px; min-height: 40px; }
+  .creator-detail-tabs button { width: 100%; }
   .ohlc-legend { max-width: 58vw; }
   .chart-toolbar { align-items: flex-start; flex-direction: column; padding: 7px 9px; }
   .market-insights-view,
@@ -2897,7 +2903,7 @@ button {
   .creator-detail-shell .creator-work-detail { border-radius: 0; }
   .creator-work-title { font-size: 14px; }
   .creator-work-preview { font-size: 12px; }
-  .creator-work-meta,
+  .creator-work-meta { font-size: 12px; }
   .creator-direction-chip,
-  .creator-work-count { font-size: 10px; }
+  .creator-work-count { font-size: 11px; }
 }
