@@ -1682,15 +1682,15 @@ button {
   gap: 8px;
   padding: 0 10px;
   border: 1px solid var(--terminal-border);
-  border-radius: 7px;
+  border-radius: var(--terminal-control-radius);
   color: var(--terminal-muted);
-  background: var(--terminal-panel-soft);
+  background: var(--terminal-control);
   margin-left: auto;
 }
 
 .news-search-box:focus-within {
   border-color: rgba(53, 201, 243, 0.45);
-  box-shadow: 0 0 0 2px rgba(53, 201, 243, 0.08);
+  box-shadow: var(--terminal-focus);
 }
 
 .news-search-box input {
@@ -1700,7 +1700,7 @@ button {
   outline: 0;
   background: transparent;
   color: var(--terminal-text);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .news-filter-bar {
@@ -1736,8 +1736,8 @@ button {
 .news-sort-direction {
   padding: 3px;
   border: 1px solid var(--terminal-border);
-  border-radius: 7px;
-  background: rgba(11, 18, 29, 0.7);
+  border-radius: var(--terminal-control-radius);
+  background: var(--terminal-control);
 }
 
 .news-window-group button,
@@ -1803,7 +1803,7 @@ button {
   justify-content: space-between;
   padding: 0 12px;
   border-bottom: 1px solid var(--terminal-border);
-  background: #0d1622;
+  background: rgba(13, 23, 35, .97);
   color: var(--terminal-text-soft);
   font-size: 12px;
 }
@@ -1821,11 +1821,12 @@ button {
   background: transparent;
   text-align: left;
   cursor: pointer;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
 }
 
 .news-stream-item:hover,
 .news-stream-item.is-active {
-  background: linear-gradient(90deg, rgba(53, 201, 243, 0.085), rgba(53, 201, 243, 0.015));
+  background: rgba(49, 199, 237, 0.055);
 }
 
 .news-stream-item.is-active {
@@ -1838,7 +1839,7 @@ button {
   align-items: center;
   gap: 8px;
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .news-item-meta > span:first-child {
@@ -1874,8 +1875,8 @@ button {
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
-  color: #7f8da1;
-  font-size: 11px;
+  color: var(--terminal-muted);
+  font-size: 12px;
   line-height: 1.55;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -1936,7 +1937,7 @@ button {
 
 .news-content p {
   color: var(--terminal-text-soft);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.9;
 }
 
@@ -1963,8 +1964,8 @@ button {
 .news-key-points li {
   position: relative;
   padding-left: 13px;
-  color: #8f9db0;
-  font-size: 11px;
+  color: var(--terminal-muted);
+  font-size: 12px;
   line-height: 1.6;
 }
 
@@ -2006,7 +2007,11 @@ button {
 .creator-overview-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--terminal-border);
+  border-radius: var(--terminal-radius);
+  background: var(--terminal-panel);
 }
 
 .creator-overview-card {
@@ -2016,7 +2021,14 @@ button {
   align-items: center;
   gap: 9px;
   padding: 10px 13px;
+  border: 0;
+  border-right: 1px solid var(--terminal-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
+
+.creator-overview-card:last-child { border-right: 0; }
 
 .creator-overview-card > svg {
   color: var(--terminal-accent);
@@ -2031,6 +2043,7 @@ button {
   color: var(--terminal-text);
   font-size: 20px;
   font-weight: 650;
+  font-family: var(--terminal-mono);
 }
 
 .creator-filter-bar {
@@ -2051,13 +2064,13 @@ button {
   padding: 0 9px;
   border: 1px solid var(--terminal-border);
   border-radius: 6px;
-  background: #0a131f;
+  background: var(--terminal-control);
   color: var(--terminal-muted);
 }
 
 .creator-search:focus-within {
   border-color: rgba(53, 201, 243, 0.5);
-  box-shadow: 0 0 0 2px rgba(53, 201, 243, 0.08);
+  box-shadow: var(--terminal-focus);
 }
 
 .creator-search input {
@@ -2067,7 +2080,7 @@ button {
   outline: 0;
   background: transparent;
   color: var(--terminal-text);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .creator-filter-buttons {
@@ -2076,7 +2089,7 @@ button {
   padding: 2px;
   border: 1px solid var(--terminal-border);
   border-radius: 6px;
-  background: #0a131f;
+  background: var(--terminal-control);
 }
 
 .creator-filter-buttons button,
@@ -2092,7 +2105,7 @@ button {
 .creator-filter-buttons button {
   padding: 0 8px;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .creator-filter-buttons button:hover,
@@ -2111,9 +2124,9 @@ button {
   padding: 0 7px;
   border: 1px solid var(--terminal-border);
   border-radius: 6px;
-  background: #0a131f;
+  background: var(--terminal-control);
   color: var(--terminal-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .creator-platform-select select {
@@ -2135,7 +2148,7 @@ button {
   margin-left: auto;
   padding: 0 9px;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .creator-mobile-switch {
@@ -2146,7 +2159,7 @@ button {
   min-height: 0;
   display: grid;
   grid-template-columns: 300px minmax(440px, 1fr) 440px;
-  gap: 12px;
+  gap: 10px;
 }
 
 .creator-workspace-grid > *,
@@ -2236,12 +2249,13 @@ button {
   background: transparent;
   text-align: left;
   cursor: pointer;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
 }
 
 .creator-ranking-item:hover,
 .creator-ranking-item.is-active {
-  border-color: rgba(53, 201, 243, 0.18);
-  background: linear-gradient(90deg, rgba(53, 201, 243, 0.09), rgba(53, 201, 243, 0.015));
+  border-color: rgba(49, 199, 237, 0.16);
+  background: rgba(49, 199, 237, 0.055);
 }
 
 .creator-ranking-item.is-active {
@@ -2280,14 +2294,14 @@ button {
   gap: 4px;
   margin-top: 4px;
   color: var(--terminal-muted);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .creator-rank-main em {
   margin-top: 4px;
   overflow: hidden;
   color: var(--terminal-faint);
-  font-size: 9px;
+  font-size: 10px;
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2301,12 +2315,13 @@ button {
   color: var(--terminal-accent);
   font-size: 15px;
   font-weight: 650;
+  font-family: var(--terminal-mono);
 }
 
 .creator-rank-score small {
   margin-top: 2px;
   color: var(--terminal-faint);
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .creator-rank-score em {
@@ -2316,7 +2331,7 @@ button {
   border-radius: 3px;
   background: rgba(245, 185, 66, .07);
   color: var(--terminal-warning);
-  font-size: 8px;
+  font-size: 9px;
   font-style: normal;
 }
 
@@ -2353,11 +2368,12 @@ button {
   background: transparent;
   text-align: left;
   cursor: pointer;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
 }
 
 .creator-work-card:hover,
 .creator-work-card.is-active {
-  background: linear-gradient(90deg, rgba(53, 201, 243, 0.085), rgba(53, 201, 243, 0.01));
+  background: rgba(49, 199, 237, 0.055);
 }
 
 .creator-work-card.is-active {
@@ -2369,12 +2385,12 @@ button {
   align-items: center;
   gap: 7px;
   color: var(--terminal-faint);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .creator-work-meta b {
   color: var(--terminal-text-soft);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -2401,7 +2417,7 @@ button {
   display: -webkit-box;
   overflow: hidden;
   color: var(--terminal-muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.55;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -2422,8 +2438,8 @@ button {
   border: 1px solid var(--terminal-border);
   border-radius: 4px;
   color: var(--terminal-muted);
-  background: rgba(16, 27, 40, .78);
-  font-size: 9px;
+  background: var(--terminal-control);
+  font-size: 10px;
   font-style: normal;
 }
 
@@ -2446,7 +2462,7 @@ button {
 
 .creator-work-count {
   color: var(--terminal-faint);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .creator-load-more {
