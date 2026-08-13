@@ -308,7 +308,7 @@ button {
 
 .terminal-main {
   height: calc(100vh - 112px);
-  padding: 12px;
+  padding: 10px;
 }
 
 .workspace-date-gate {
@@ -323,8 +323,8 @@ button {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-columns: 284px minmax(560px, 1fr) 370px;
-  gap: 12px;
+  grid-template-columns: 272px minmax(580px, 1fr) 352px;
+  gap: 10px;
 }
 
 .terminal-panel {
@@ -338,19 +338,19 @@ button {
 }
 
 .panel-title-row {
-  min-height: 62px;
+  min-height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--terminal-border);
 }
 
 .panel-title-row h2 {
   margin: 3px 0 0;
   color: var(--terminal-text);
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.2;
 }
@@ -360,7 +360,7 @@ button {
   align-items: center;
   gap: 5px;
   color: var(--terminal-accent);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 1px;
 }
@@ -378,7 +378,7 @@ button {
   height: 6px;
   border-radius: 50%;
   background: var(--terminal-fall);
-  box-shadow: 0 0 8px rgba(24, 185, 139, 0.7);
+  box-shadow: 0 0 6px rgba(24, 185, 139, 0.42);
 }
 
 .data-live.is-delayed {
@@ -498,14 +498,14 @@ button {
   margin: 10px;
   padding: 0 11px;
   border: 1px solid var(--terminal-border-strong);
-  border-radius: 7px;
+  border-radius: var(--terminal-control-radius);
   color: var(--terminal-muted);
-  background: #0a111b;
+  background: var(--terminal-control);
 }
 
 .stock-search-field:focus-within {
   border-color: rgba(53, 201, 243, 0.48);
-  box-shadow: 0 0 0 2px rgba(53, 201, 243, 0.08);
+  box-shadow: var(--terminal-focus);
 }
 
 .stock-search-field input {
@@ -557,16 +557,14 @@ button {
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background 170ms ease, transform 170ms ease, box-shadow 170ms ease;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
 }
 
 .navigator-stock-row:hover,
 .navigator-stock-row.is-active {
-  border-radius: 9px;
-  background: linear-gradient(90deg, rgba(53, 201, 243, 0.11), rgba(83, 109, 147, 0.035));
+  border-radius: var(--terminal-control-radius);
+  background: rgba(49, 199, 237, 0.075);
 }
-
-.navigator-stock-row:hover { transform: translateX(2px); }
 
 .navigator-stock-row.is-active { box-shadow: inset 2px 0 var(--terminal-accent); }
 
@@ -611,7 +609,7 @@ button {
 .radar-stock-item:hover,
 .radar-stock-item.is-active {
   border-radius: 6px;
-  background: linear-gradient(90deg, rgba(53, 201, 243, 0.1), rgba(53, 201, 243, 0.02));
+  background: rgba(49, 199, 237, 0.07);
 }
 
 .sector-rank-item.is-active,
@@ -746,9 +744,7 @@ button {
   flex-direction: column;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  background:
-    radial-gradient(circle at 35% 0, rgba(45, 83, 116, 0.12), transparent 32%),
-    linear-gradient(180deg, #0d1723, #0a121c);
+  background: #0a131e;
 }
 
 .chart-fixed-header {
@@ -757,9 +753,9 @@ button {
   z-index: 8;
   flex: 0 0 auto;
   align-self: stretch;
-  background: rgba(11, 20, 31, 0.94);
-  box-shadow: 0 10px 24px rgba(3, 8, 14, 0.18);
-  backdrop-filter: blur(14px);
+  background: rgba(10, 19, 30, 0.96);
+  box-shadow: 0 8px 16px rgba(3, 8, 14, 0.12);
+  backdrop-filter: blur(10px);
 }
 
 .chart-workspace:fullscreen {
@@ -767,14 +763,14 @@ button {
 }
 
 .stock-quote-head {
-  min-height: 72px;
+  min-height: 68px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
   padding: 10px 16px;
   border-bottom: 1px solid var(--terminal-border);
-  background: linear-gradient(90deg, rgba(29, 48, 69, 0.34), rgba(14, 24, 37, 0.08));
+  background: var(--terminal-panel-raised);
 }
 
 .stock-quote-head > div:first-child {
@@ -794,6 +790,7 @@ button {
 
 .stock-identity > span:not(.trade-date-chip) {
   color: var(--terminal-muted);
+  font-family: var(--terminal-mono);
   font-size: 11px;
 }
 
@@ -802,6 +799,7 @@ button {
   border: 1px solid var(--terminal-border);
   border-radius: 4px;
   color: var(--terminal-faint);
+  font-family: var(--terminal-mono);
   font-size: 10px;
 }
 
@@ -816,6 +814,7 @@ button {
   font-size: 22px;
   font-weight: 650;
   line-height: 1;
+  font-family: var(--terminal-mono);
 }
 
 .stock-price-row small {
@@ -828,7 +827,7 @@ button {
   gap: 2px;
   margin-top: 5px;
   color: var(--terminal-accent);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -857,7 +856,7 @@ button {
   padding: 6px 10px;
   border-top: 1px solid var(--terminal-border);
   border-bottom: 1px solid var(--terminal-border);
-  background: rgba(9, 16, 25, .4);
+  background: var(--terminal-panel-soft);
 }
 
 .intraday-intervals button {
@@ -888,7 +887,7 @@ button {
 .chart-periods button {
   height: 27px;
   padding: 0 9px;
-  border-radius: 999px;
+  border-radius: var(--terminal-control-radius);
 }
 
 .chart-toolbar {
@@ -899,7 +898,7 @@ button {
   gap: 10px;
   padding: 6px 10px 6px 14px;
   border-bottom: 1px solid rgba(29, 42, 60, 0.72);
-  background: rgba(11, 20, 31, 0.72);
+  background: var(--terminal-panel-soft);
 }
 
 .ohlc-legend {
@@ -925,10 +924,8 @@ button {
   align-items: center;
   justify-content: center;
   padding: 0 7px;
-  border-radius: 7px;
+  border-radius: var(--terminal-control-radius);
 }
-
-.chart-tools button:hover { transform: translateY(-1px); }
 
 .chart-tool-divider {
   display: inline-flex;
@@ -949,7 +946,7 @@ button {
   min-height: 34px;
   padding: 7px 14px;
   border-bottom: 1px solid rgba(58, 76, 99, 0.24);
-  background: linear-gradient(90deg, rgba(18, 31, 47, 0.72), rgba(11, 20, 31, 0.38));
+  background: var(--terminal-panel);
 }
 
 .indicator-legend-row {
@@ -999,9 +996,7 @@ button {
   flex: 0 0 auto;
   position: relative;
   min-height: 430px;
-  background:
-    linear-gradient(180deg, rgba(21, 37, 54, 0.14), transparent 28%),
-    #0b1420;
+  background: #0a131e;
 }
 
 .chart-navigation-controls {
@@ -1013,9 +1008,9 @@ button {
   gap: 2px;
   padding: 3px;
   border: 1px solid rgba(77, 104, 134, 0.58);
-  border-radius: 9px;
+  border-radius: var(--terminal-control-radius);
   background: rgba(10, 19, 29, 0.88);
-  box-shadow: 0 8px 22px rgba(1, 6, 12, 0.32);
+  box-shadow: 0 6px 16px rgba(1, 6, 12, 0.24);
   backdrop-filter: blur(10px);
 }
 
@@ -1036,11 +1031,6 @@ button {
   border-color: rgba(69, 185, 232, 0.35);
   color: #e2f7ff;
   background: rgba(37, 123, 158, 0.22);
-  transform: translateY(-1px);
-}
-
-.chart-navigation-controls button:active {
-  transform: translateY(0);
 }
 
 .chart-canvas-shell > .terminal-empty {
@@ -1051,24 +1041,22 @@ button {
   padding: 4px 10px;
   border-top: 1px solid rgba(29, 42, 60, 0.6);
   color: #45566d;
-  font-size: 7px;
+  font-size: 10px;
   text-align: right;
   text-decoration: none;
 }
 
 .decision-panel {
   overflow-y: auto;
-  background:
-    radial-gradient(circle at 100% 0, rgba(48, 102, 134, 0.1), transparent 30%),
-    linear-gradient(180deg, rgba(17, 29, 43, 0.98), rgba(10, 18, 28, 0.99));
+  background: var(--terminal-panel);
 }
 
 .decision-title {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: rgba(16, 28, 42, 0.94);
-  backdrop-filter: blur(12px);
+  background: rgba(13, 23, 35, 0.96);
+  backdrop-filter: blur(10px);
 }
 
 .snapshot-source {
@@ -1077,9 +1065,9 @@ button {
   gap: 5px;
   padding: 5px 7px;
   border: 1px solid var(--terminal-border-strong);
-  border-radius: 999px;
+  border-radius: var(--terminal-tag-radius);
   color: var(--terminal-accent);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .snapshot-source.is-linked {
@@ -1090,7 +1078,7 @@ button {
 
 .snapshot-source.is-linked i {
   background: #9b8af5;
-  box-shadow: 0 0 8px rgba(155, 138, 245, 0.72);
+  box-shadow: none;
 }
 
 .snapshot-source i {
@@ -1098,7 +1086,7 @@ button {
   height: 5px;
   border-radius: 50%;
   background: var(--terminal-accent);
-  box-shadow: 0 0 8px rgba(53, 201, 243, 0.7);
+  box-shadow: none;
 }
 
 .decision-stock-line {
@@ -1122,11 +1110,12 @@ button {
 .decision-stock-line small {
   margin-top: 3px;
   color: var(--terminal-faint);
-  font-size: 10px;
+  font-family: var(--terminal-mono);
+  font-size: 11px;
 }
 
 .decision-section {
-  padding: 13px 14px;
+  padding: 12px;
   border-bottom: 1px solid var(--terminal-border);
 }
 
@@ -1137,21 +1126,21 @@ button {
   gap: 5px;
   margin: 0 0 6px;
   color: var(--terminal-text-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .decision-section p,
 .news-detail-section p {
   margin: 0;
-  color: #8f9db0;
-  font-size: 11px;
+  color: var(--terminal-muted);
+  font-size: 12px;
   line-height: 1.7;
   white-space: pre-wrap;
 }
 
 .decision-conclusion {
-  background: linear-gradient(90deg, rgba(53, 201, 243, 0.055), transparent);
+  background: rgba(49, 199, 237, 0.035);
 }
 
 .snapshot-grid {
@@ -1163,10 +1152,10 @@ button {
 .snapshot-grid span {
   padding: 8px;
   border: 1px solid rgba(87, 109, 137, 0.13);
-  border-radius: 8px;
-  background: linear-gradient(145deg, rgba(25, 40, 58, 0.76), rgba(17, 29, 43, 0.54));
+  border-radius: var(--terminal-control-radius);
+  background: var(--terminal-panel-soft);
   color: var(--terminal-faint);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .snapshot-grid b {
@@ -1174,6 +1163,7 @@ button {
   margin-top: 4px;
   color: var(--terminal-text-soft);
   font-size: 12px;
+  font-family: var(--terminal-mono);
 }
 
 .snapshot-wide {
@@ -1198,10 +1188,10 @@ button {
   min-width: 0;
   padding: 7px;
   border: 1px solid rgba(37, 53, 74, 0.74);
-  border-radius: 8px;
-  background: linear-gradient(145deg, rgba(22, 36, 52, 0.7), rgba(14, 25, 38, 0.58));
+  border-radius: var(--terminal-control-radius);
+  background: var(--terminal-panel-soft);
   color: var(--terminal-faint);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .chip-section { padding-bottom: 16px; }
@@ -1219,8 +1209,8 @@ button {
   min-width: 0;
   padding: 9px;
   border: 1px solid rgba(87, 109, 137, 0.18);
-  border-radius: 9px;
-  background: rgba(15, 27, 41, 0.64);
+  border-radius: var(--terminal-control-radius);
+  background: var(--terminal-panel-soft);
 }
 
 .chip-cost-card span,
@@ -1229,7 +1219,7 @@ button {
 
 .chip-cost-card span {
   color: var(--terminal-faint);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .chip-cost-card b {
@@ -1237,12 +1227,13 @@ button {
   color: var(--terminal-text-soft);
   font-size: 12px;
   font-weight: 600;
+  font-family: var(--terminal-mono);
 }
 
 .chip-cost-card small {
   margin-top: 4px;
   color: var(--terminal-muted);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .chip-distribution {
@@ -1250,10 +1241,8 @@ button {
   padding: 10px;
   overflow: hidden;
   border: 1px solid rgba(87, 109, 137, 0.2);
-  border-radius: 11px;
-  background:
-    radial-gradient(circle at 72% 35%, rgba(48, 102, 134, 0.12), transparent 45%),
-    rgba(9, 18, 29, 0.7);
+  border-radius: var(--terminal-radius);
+  background: var(--terminal-panel-soft);
 }
 
 .chip-distribution figcaption {
@@ -1266,7 +1255,7 @@ button {
 
 .chip-distribution figcaption small {
   color: var(--terminal-faint);
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .chip-distribution svg {
@@ -1314,7 +1303,7 @@ button {
   justify-content: flex-end;
   gap: 14px;
   color: var(--terminal-faint);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .chip-chart-legend span::before {
@@ -1345,6 +1334,7 @@ button {
   color: var(--terminal-text-soft);
   font-size: 12px;
   font-weight: 600;
+  font-family: var(--terminal-mono);
   text-overflow: ellipsis;
 }
 
