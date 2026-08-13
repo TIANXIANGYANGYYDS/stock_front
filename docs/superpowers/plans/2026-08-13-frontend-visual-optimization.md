@@ -502,4 +502,3 @@ If no post-verification fixes exist, do not create an empty commit.
 - Placeholder scan: no TBD/TODO/deferred implementation language remains; each code-changing task names exact classes, files, commands, and expected outcomes.
 - Type consistency: no component public props or API types change; `analysisDate`, `marketTradeDate`, `TerminalHeaderProps`, and existing view contracts remain unchanged.
 - Scope: component markup changes are limited to inert header controls and the legacy market-analysis presentation; all other work is token/scoped CSS.
-

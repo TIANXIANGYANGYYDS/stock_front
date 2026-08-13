@@ -156,4 +156,3 @@ Near-black surfaces, sharp corners, mostly monospaced typography, and very compa
 - Run the Vite production build.
 - Capture and inspect desktop and mobile screenshots for all four views.
 - Check horizontal overflow, keyboard focus, reduced motion, and critical loading/error/empty states.
-
