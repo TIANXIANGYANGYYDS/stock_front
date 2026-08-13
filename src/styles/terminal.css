@@ -2800,7 +2800,7 @@ button {
   }
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 1125px) {
   body { overflow: auto; }
   .terminal-header { height: auto; }
   .terminal-topbar { height: auto; min-height: 58px; grid-template-columns: 190px minmax(420px, 1fr) auto; overflow-x: auto; }
