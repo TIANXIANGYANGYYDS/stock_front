@@ -128,6 +128,33 @@ describe('TerminalHeader market index strip', () => {
     await act(async () => root.unmount());
   });
 
+  it('keeps live market telemetry without inert global controls', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(
+      <TerminalHeader
+        activeView="decision"
+        tradeDate="2026-08-07"
+        realtimeIndices={realtimeIndices}
+        indicesLoading={false}
+        indicesDelayed={false}
+        indicesError={null}
+        onViewChange={vi.fn()}
+      />,
+    ));
+
+    expect(host.textContent).toContain('数据在线');
+    expect(host.textContent).toContain('行情数据日期');
+    expect(host.textContent).toContain('上证指数');
+    expect(host.textContent).toContain('沪深300');
+    expect(host.textContent).not.toContain('股票 / 板块');
+    expect(host.querySelector('[aria-label="终端设置"]')).toBeNull();
+
+    await act(async () => root.unmount());
+  });
+
   it('keeps stale values visible while marking closed and delayed states', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);

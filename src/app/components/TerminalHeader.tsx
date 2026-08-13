@@ -5,8 +5,6 @@ import {
   MessageSquareQuote,
   Newspaper,
   Radio,
-  Search,
-  Settings,
   Sparkles,
 } from 'lucide-react';
 import type { RealtimeMarketIndicesResponse } from '../lib/api';
@@ -93,7 +91,6 @@ export function TerminalHeader({
         </nav>
 
         <div className="terminal-actions">
-          <div className="terminal-search-hint"><Search size={14} /><span>股票 / 板块</span><kbd>⌘ K</kbd></div>
           <div className={`api-state ${dataDelayed || indicesError ? 'is-error' : ''}`}>
             <Radio size={13} />
             <span>
@@ -102,9 +99,8 @@ export function TerminalHeader({
                 : dataDelayed || indicesError
                   ? '数据延迟'
                   : '数据在线'}
-            </span>
+              </span>
           </div>
-          <button className="icon-button" aria-label="终端设置"><Settings size={16} /></button>
         </div>
       </div>
 
