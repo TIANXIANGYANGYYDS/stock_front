@@ -43,6 +43,25 @@ afterEach(() => {
 });
 
 describe('MarketAnalysis details', () => {
+  it('renders the morning report in the native terminal structure', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(<MarketAnalysis analysisDate="2026-08-11" />));
+    await act(async () => Promise.resolve());
+
+    expect(host.querySelector('.market-analysis-panel')).not.toBeNull();
+    expect(host.querySelector('.market-analysis-date')?.textContent).toContain('2026-08-11');
+    expect(host.querySelectorAll('.market-mainline-row')).toHaveLength(1);
+    expect(host.querySelector('[class*="hover:scale"]')).toBeNull();
+    expect(host.textContent).toContain('后端盘前分析');
+    expect(host.textContent).toContain('国产替代逻辑强化');
+    expect(host.textContent).toContain('市场研判');
+
+    await act(async () => root.unmount());
+  });
+
   it('opens the complete morning mainline detail instead of navigating to a stock', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);

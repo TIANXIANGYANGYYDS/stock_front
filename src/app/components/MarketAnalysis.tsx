@@ -1,4 +1,4 @@
-import { Flame, TrendingUp } from 'lucide-react';
+import { Flame, Lightbulb, TrendingUp } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getPreopenAnalysis, type PreopenAnalysisResponse } from '../lib/api';
 import { analysisAdviceText, resolveMainLines } from '../features/market/market-analysis-state';
@@ -40,24 +40,6 @@ export function MarketAnalysis({ analysisDate }: MarketAnalysisProps) {
   const dateLabel = analysis?.analysisDate || '--';
   const adviceText = analysisAdviceText(analysis);
 
-  const getPriorityStyle = (priority: string) => {
-    if (priority === 'high') return {
-      badge: 'bg-red-500/10 border-red-500/30 text-red-400',
-      border: 'border-red-500/30',
-      icon: 'text-red-400',
-    };
-    if (priority === 'medium') return {
-      badge: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400',
-      border: 'border-yellow-500/30',
-      icon: 'text-yellow-400',
-    };
-    return {
-      badge: 'bg-slate-700/30 border-slate-600/30 text-slate-400',
-      border: 'border-slate-700/50',
-      icon: 'text-slate-400',
-    };
-  };
-
   const getPriorityLabel = (priority: string) => {
     if (priority === 'high') return '核心主线';
     if (priority === 'medium') return '次级主线';
@@ -65,82 +47,59 @@ export function MarketAnalysis({ analysisDate }: MarketAnalysisProps) {
   };
 
   return (
-    <div className="bg-slate-900/50 backdrop-blur-xl rounded-2xl border border-slate-800/50 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800/50 bg-gradient-to-r from-slate-800/30 to-slate-900/30">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg">
-            <Flame className="w-4 h-4 text-white" />
-          </div>
+    <section className="terminal-panel market-analysis-panel">
+      <header className="market-analysis-head">
+        <div className="market-analysis-title">
+          <span className="market-analysis-icon"><Flame size={15} /></span>
           <div>
-            <h3 className="text-sm text-white">每日盘前分析</h3>
-            <p className="text-xs text-slate-400">盘前分析日期：{dateLabel}</p>
+            <h3>每日盘前分析</h3>
+            <p className="market-analysis-date">盘前分析日期：{dateLabel}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="px-2.5 py-1 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-            <span className="text-xs text-blue-400">后端盘前分析</span>
-          </div>
-          <div className="px-2.5 py-1 bg-slate-800/50 border border-slate-600/40 rounded-lg">
-            <span className="text-xs text-slate-300">{mainLines.length ? `${mainLines.length} 个市场主线` : '暂无主线数据'}</span>
-          </div>
+        <div className="market-analysis-meta">
+          <span>后端盘前分析</span>
+          <span>{mainLines.length ? `${mainLines.length} 个市场主线` : '暂无主线数据'}</span>
         </div>
-      </div>
+      </header>
 
-      <div className="p-4 space-y-3">
-        {loading && <div className="text-xs text-slate-400">分析加载中...</div>}
-        {!loading && error && <div className="text-xs text-red-400">{error}</div>}
+      <div className="market-analysis-body">
+        {loading && <div className="market-analysis-state"><span className="loading-pulse" />分析加载中...</div>}
+        {!loading && error && <div className="market-analysis-state is-error">{error}</div>}
         {!loading && !error && mainLines.length === 0 && (
-          <div className="text-xs text-slate-400">该盘前分析日期暂无盘前分析数据</div>
+          <div className="market-analysis-state">该盘前分析日期暂无盘前分析数据</div>
         )}
 
         {!loading && !error && mainLines.map((line) => {
-          const style = getPriorityStyle(line.priority);
           return (
             <button
               type="button"
               key={`${line.rank}-${line.title}`}
               onClick={() => setSelectedLine(line)}
-              className={`block w-full text-left p-3 border-2 rounded-xl transition-all cursor-pointer hover:scale-[1.01] bg-slate-800/20 ${style.border} hover:bg-slate-800/40`}
+              className={`market-mainline-row is-${line.priority}`}
             >
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center justify-center w-7 h-7 bg-slate-900/50 border border-slate-700/50 rounded-lg">
-                    <span className={`text-xs ${style.icon}`}>#{line.rank}</span>
-                  </div>
+              <span className="market-mainline-rank">{String(line.rank).padStart(2, '0')}</span>
+              <div className="market-mainline-content">
+                <div className="market-mainline-heading">
                   <div>
-                    <h4 className="text-sm text-white mb-0.5 flex items-center gap-2">
+                    <h4>
                       {line.title}
-                      {line.rank === 1 && <TrendingUp className="w-3.5 h-3.5 text-red-400" />}
+                      {line.rank === 1 && <TrendingUp size={14} />}
                     </h4>
-                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs ${style.badge}`}>
-                      {getPriorityLabel(line.priority)}
-                    </span>
                   </div>
+                  <span className="market-priority-tag">{getPriorityLabel(line.priority)}</span>
                 </div>
-                <span className="px-2 py-1 rounded border text-xs bg-slate-800/50 border-slate-600/40 text-slate-300">
-                  查看详情
-                </span>
+                <p><span>理由</span>{line.reason?.trim() || '后端未返回详细理由'}</p>
               </div>
-              <p className="pl-9 text-xs text-slate-400 leading-relaxed">
-                <span className="text-slate-500 mr-1.5">理由：</span>
-                {line.reason?.trim() || '后端未返回详细理由'}
-              </p>
+              <span className="market-mainline-action">查看详情</span>
             </button>
           );
         })}
       </div>
 
-      {adviceText && <div className="px-4 pb-4">
-        <div className="p-2.5 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-500/30 rounded-xl">
-          <div className="flex items-start gap-2">
-            <div className="w-5 h-5 bg-blue-500/20 rounded flex items-center justify-center flex-shrink-0"><span className="text-xs">💡</span></div>
-            <div>
-              <p className="text-xs text-blue-400 mb-0.5">市场研判</p>
-              <p className="text-xs text-slate-400 leading-relaxed line-clamp-4">{adviceText}</p>
-            </div>
-          </div>
-        </div>
-      </div>}
+      {adviceText && <aside className="market-analysis-advice">
+        <Lightbulb size={15} />
+        <div><strong>市场研判</strong><p>{adviceText}</p></div>
+      </aside>}
 
       {selectedLine && (
         <div className="analysis-detail-backdrop" onMouseDown={() => setSelectedLine(null)}>
@@ -179,6 +138,6 @@ export function MarketAnalysis({ analysisDate }: MarketAnalysisProps) {
           </section>
         </div>
       )}
-    </div>
+    </section>
   );
 }

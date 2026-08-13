@@ -27,7 +27,7 @@ export function MarketInsightsView({ marketTradeDate, analysisDate }: MarketInsi
 
   return (
     <main className="market-insights-view terminal-scroll">
-      <div className="market-analysis-lead legacy-panel-skin">
+      <div className="market-analysis-lead">
         <MarketAnalysis analysisDate={analysisDate} />
       </div>
 
