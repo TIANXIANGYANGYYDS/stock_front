@@ -1,21 +1,26 @@
 :root {
-  --terminal-bg: #091019;
-  --terminal-panel: #0d1622;
-  --terminal-panel-raised: #121e2c;
-  --terminal-panel-soft: #101b28;
-  --terminal-border: rgba(83, 105, 134, 0.25);
-  --terminal-border-strong: rgba(102, 128, 162, 0.38);
-  --terminal-text: #e6edf7;
-  --terminal-text-soft: #b7c3d4;
-  --terminal-muted: #738299;
-  --terminal-faint: #4f6076;
-  --terminal-accent: #35c9f3;
-  --terminal-accent-soft: rgba(53, 201, 243, 0.12);
-  --terminal-rise: #ef5350;
+  --terminal-bg: #080f18;
+  --terminal-panel: #0d1723;
+  --terminal-panel-raised: #111e2c;
+  --terminal-panel-soft: #0b1420;
+  --terminal-control: #0a131e;
+  --terminal-border: rgba(111, 139, 172, 0.2);
+  --terminal-border-strong: rgba(121, 153, 190, 0.36);
+  --terminal-text: #edf3fb;
+  --terminal-text-soft: #c4cfdd;
+  --terminal-muted: #8291a6;
+  --terminal-faint: #607086;
+  --terminal-accent: #31c7ed;
+  --terminal-accent-soft: rgba(49, 199, 237, 0.1);
+  --terminal-rise: #f05a5a;
   --terminal-fall: #18b98b;
-  --terminal-warning: #f5b942;
-  --terminal-violet: #a78bfa;
-  --terminal-radius: 14px;
+  --terminal-warning: #e9b949;
+  --terminal-violet: #a88af4;
+  --terminal-radius: 8px;
+  --terminal-control-radius: 6px;
+  --terminal-tag-radius: 4px;
+  --terminal-focus: 0 0 0 2px rgba(49, 199, 237, 0.3);
+  --terminal-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 html,
@@ -29,13 +34,14 @@ body {
   overflow: hidden;
   background: var(--terminal-bg);
   color: var(--terminal-text);
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
   font-variant-numeric: tabular-nums;
   font-size: 14px;
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -46,8 +52,7 @@ button {
 .stock-terminal {
   min-height: 100vh;
   background:
-    radial-gradient(circle at 18% -15%, rgba(39, 95, 129, 0.18), transparent 38%),
-    radial-gradient(circle at 82% 15%, rgba(45, 69, 105, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(23, 52, 75, 0.12), transparent 240px),
     var(--terminal-bg);
 }
 
@@ -357,11 +362,8 @@ button {
   overflow: hidden;
   border: 1px solid var(--terminal-border);
   border-radius: var(--terminal-radius);
-  background:
-    linear-gradient(180deg, rgba(18, 30, 44, 0.96), rgba(10, 18, 28, 0.98));
-  box-shadow:
-    inset 0 1px rgba(255, 255, 255, 0.025),
-    0 16px 38px rgba(0, 0, 0, 0.14);
+  background: var(--terminal-panel);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.018);
 }
 
 .panel-title-row {
@@ -438,12 +440,12 @@ button {
 .news-sort-direction button,
 .news-sort-button {
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--terminal-control-radius);
   background: transparent;
   color: var(--terminal-muted);
   font-size: 12px;
   cursor: pointer;
-  transition: color 160ms ease, border-color 160ms ease, background 160ms ease, transform 160ms ease;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
 }
 
 .radar-tabs button {
@@ -2547,8 +2549,13 @@ button {
 .creator-detail-tabs button:focus-visible,
 .creator-detail-close:focus-visible,
 .creator-load-more:focus-visible {
-  outline: 2px solid var(--terminal-accent);
-  outline-offset: -2px;
+  outline: 0;
+  box-shadow: var(--terminal-focus);
+}
+
+.stock-terminal :where(button, input, select, a):focus-visible {
+  outline: 0;
+  box-shadow: var(--terminal-focus);
 }
 
 .terminal-scroll,
@@ -2572,6 +2579,17 @@ button {
 @keyframes skeleton-shimmer {
   0%, 100% { opacity: .45; }
   50% { opacity: .9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stock-terminal *,
+  .stock-terminal *::before,
+  .stock-terminal *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
 }
 
 @media (max-width: 1280px) {
