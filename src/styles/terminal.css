@@ -2710,6 +2710,27 @@ button {
   box-shadow: var(--terminal-focus);
 }
 
+.news-stream-item h3,
+.news-stream-item p,
+.news-detail,
+.market-mainline-content,
+.creator-work-title,
+.creator-work-preview,
+.creator-ai-summary p,
+.creator-source-pane > p {
+  overflow-wrap: anywhere;
+}
+
+.stock-name-code small,
+.stock-list-price,
+.trade-date-chip,
+.market-analysis-date,
+.index-ticker > b,
+.index-ticker > em,
+.creator-rank-score {
+  white-space: nowrap;
+}
+
 .terminal-scroll,
 .terminal-scroll-x {
   scrollbar-color: #25344a transparent;
@@ -2745,10 +2766,8 @@ button {
 }
 
 @media (max-width: 1280px) {
-  .terminal-topbar,
+  .terminal-topbar { grid-template-columns: 220px minmax(430px, 1fr) auto; }
   .market-index-strip { grid-template-columns: 220px minmax(0, 1fr); }
-  .terminal-actions { display: none; }
-  .terminal-topbar { grid-template-columns: 220px minmax(0, 1fr); }
   .decision-grid { grid-template-columns: 250px minmax(500px, 1fr) 336px; }
   .creator-workspace-grid { grid-template-columns: 280px minmax(0, 1fr); }
   .creator-detail-overlay {
@@ -2784,8 +2803,8 @@ button {
 @media (max-width: 1100px) {
   body { overflow: auto; }
   .terminal-header { height: auto; }
-  .terminal-topbar { height: auto; min-height: 58px; grid-template-columns: 200px minmax(420px, 1fr); overflow-x: auto; }
-  .terminal-nav button { min-width: 104px; }
+  .terminal-topbar { height: auto; min-height: 58px; grid-template-columns: 190px minmax(420px, 1fr) auto; overflow-x: auto; }
+  .terminal-nav button { min-width: 104px; min-height: 44px; }
   .market-index-strip { height: 58px; grid-template-columns: 180px minmax(700px, 1fr); overflow-x: auto; }
   .terminal-main { height: auto; min-height: calc(100vh - 116px); }
   .decision-grid { height: auto; grid-template-columns: 1fr; }
@@ -2799,13 +2818,18 @@ button {
   .creator-workspace-grid { min-height: 650px; }
   .creator-filter-bar { flex-wrap: wrap; overflow: visible; }
   .creator-clear-filters { margin-left: 0; }
+  .market-mainline-row { grid-template-columns: 34px minmax(0, 1fr) auto; }
 }
 
 @media (max-width: 720px) {
-  .terminal-topbar { padding: 8px 10px; grid-template-columns: 170px minmax(360px, 1fr); }
+  .terminal-topbar { padding: 7px 10px; grid-template-columns: 160px minmax(390px, 1fr) auto; }
   .terminal-brand span { display: none; }
+  .terminal-actions { padding-right: 2px; }
+  .api-state { height: 36px; }
   .market-index-strip { padding: 0 10px; grid-template-columns: 140px minmax(650px, 1fr); }
   .terminal-main { padding: 7px; }
+  .panel-title-row { min-height: 54px; }
+  .panel-title-row h2 { font-size: 15px; }
   .stock-quote-head { align-items: stretch; flex-direction: column; gap: 9px; }
   .chart-periods { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .chart-periods button { width: 100%; }
@@ -2814,22 +2838,42 @@ button {
   .market-insights-view,
   .news-intelligence-view,
   .creator-insights-view { padding: 0; }
+  .market-analysis-head { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .market-analysis-meta { width: 100%; flex-wrap: wrap; }
+  .market-mainline-row { grid-template-columns: 28px minmax(0, 1fr); min-height: 86px; padding: 10px; }
+  .market-mainline-action { display: none; }
+  .market-mainline-content p { font-size: 12px; }
+  .ranking-window-bar { align-items: flex-start; flex-direction: column; }
+  .ranking-window-buttons { width: 100%; }
+  .ranking-window-buttons button { min-width: 0; flex: 1; height: 40px; }
   .news-search-box { width: 100%; margin-left: 0; }
   .news-filter-bar { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .news-window-group,
+  .news-sort-controls,
+  .news-sort-field,
+  .news-sort-direction { width: 100%; }
+  .news-window-group button,
+  .news-sort-field button,
+  .news-sort-direction button,
+  .news-sort-button { min-width: 0; min-height: 40px; flex: 1; }
+  .news-stream-item h3 { font-size: 15px; }
+  .news-stream-item p { font-size: 13px; }
   .news-detail { padding: 14px; }
   .creator-insights-view { min-height: 980px; grid-template-rows: auto auto auto minmax(0, 1fr); }
-  .creator-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .creator-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
   .creator-overview-card { min-height: 54px; padding: 8px 10px; }
+  .creator-overview-card:nth-child(2) { border-right: 0; }
+  .creator-overview-card:nth-child(-n + 2) { border-bottom: 1px solid var(--terminal-border); }
   .creator-overview-card b { font-size: 17px; }
   .creator-filter-bar { align-items: stretch; flex-direction: column; }
   .creator-search { width: 100%; min-width: 0; box-sizing: border-box; }
-  .creator-filter-buttons { width: 100%; }
-  .creator-filter-buttons button { min-width: 0; flex: 1; padding: 0 4px; }
-  .creator-platform-select { justify-content: space-between; }
+  .creator-filter-buttons { width: 100%; min-height: 40px; }
+  .creator-filter-buttons button { min-width: 0; min-height: 36px; flex: 1; padding: 0 4px; }
+  .creator-platform-select { min-height: 40px; justify-content: space-between; }
   .creator-platform-select select { max-width: none; flex: 1; }
-  .creator-clear-filters { width: 100%; }
+  .creator-clear-filters { width: 100%; min-height: 40px; }
   .creator-mobile-switch {
-    height: 36px;
+    height: 42px;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 4px;
@@ -2838,7 +2882,7 @@ button {
     border-radius: 7px;
     background: var(--terminal-panel-soft);
   }
-  .creator-mobile-switch button { font-size: 11px; }
+  .creator-mobile-switch button { font-size: 12px; }
   .creator-workspace-grid { min-height: 650px; display: block; }
   .creator-workspace-grid.mobile-works > .creator-ranking-panel { display: none; }
   .creator-workspace-grid.mobile-ranking > .creator-work-stream { display: none; }
@@ -2851,4 +2895,9 @@ button {
     width: 100vw;
   }
   .creator-detail-shell .creator-work-detail { border-radius: 0; }
+  .creator-work-title { font-size: 14px; }
+  .creator-work-preview { font-size: 12px; }
+  .creator-work-meta,
+  .creator-direction-chip,
+  .creator-work-count { font-size: 10px; }
 }
