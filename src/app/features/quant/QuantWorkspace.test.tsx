@@ -98,6 +98,36 @@ it('resets pagination when switching dates and uses the date returned by overvie
   expect(host.querySelector('.quant-snapshot-context')?.textContent).toContain('2026-09-03');
 });
 
+it('uses a compact mobile module picker and immediately applies dates across modules', async () => {
+  vi.stubGlobal('matchMedia', vi.fn((query: string) => ({ matches: query === '(max-width: 700px)', addEventListener() {}, removeEventListener() {} })));
+  const queries: URL[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+    const url = new URL(input, 'http://test'); queries.push(url);
+    if (url.pathname.endsWith('/strategies')) return jsonResponse(catalog);
+    const date = url.searchParams.get('trade_date') || '2026-09-04';
+    const snapshot = overviewFixture({ trade_date: date, snapshot_id: date });
+    if (url.pathname.endsWith('/overview')) return jsonResponse({ data: snapshot });
+    if (url.pathname.endsWith('/performance')) return jsonResponse(performanceFixture(['2026-09-03', '2026-09-04'].map(trade_date => overviewFixture({ trade_date, snapshot_id: trade_date }))));
+    return jsonResponse(pageFixture([], 1, 50, snapshot));
+  }));
+  const host = await setup();
+  const picker = host.querySelector<HTMLSelectElement>('[aria-label="切换量化功能"]')!;
+  expect(picker.options).toHaveLength(11);
+  expect(picker.value).toBe('signals');
+  expect(host.querySelector('.quant-subnav')).toBeNull();
+  expect(host.querySelector('.quant-date-toolbar button[type="submit"]')).toBeNull();
+  const date = host.querySelector<HTMLSelectElement>('[aria-label="量化交易日期"]')!;
+  await act(async () => { date.value = '2026-09-03'; date.dispatchEvent(new Event('change', { bubbles: true })); });
+  expect(queries.at(-1)?.searchParams.get('trade_date')).toBe('2026-09-03');
+  await act(async () => { picker.value = 'holdings'; picker.dispatchEvent(new Event('change', { bubbles: true })); });
+  expect(queries.at(-1)?.pathname).toMatch(/\/holdings$/);
+  expect(queries.at(-1)?.searchParams.get('trade_date')).toBe('2026-09-03');
+  expect(picker.value).toBe('holdings');
+  await act(async () => { date.value = ''; date.dispatchEvent(new Event('change', { bubbles: true })); });
+  expect(queries.at(-1)?.searchParams.get('trade_date')).toBe('2026-09-04');
+  expect(host.querySelector('.quant-snapshot-context')?.textContent).toContain('数据截至日期 2026-09-04');
+});
+
 it('does not fabricate a strategy when the directory is empty', async () => {
   const fetch = vi.fn().mockResolvedValue(jsonResponse({ items: [], total: 0 })); vi.stubGlobal('fetch', fetch);
   const host = await setup();

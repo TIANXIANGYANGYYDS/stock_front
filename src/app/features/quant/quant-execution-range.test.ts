@@ -82,10 +82,15 @@ it('rejects malformed range identity and incomplete pagination', async () => {
   await expect(getQuantExecutionRangePage(rangeQuery, { pageSize: 200 })).rejects.toThrow('分页数据不完整');
 });
 
-it('does not continue pagination when a pending response arrives after cancellation', async () => {
+it.each([false, true])('does not continue pagination after cancellation, including legacy mobile signals: %s', async legacy => {
   let finish!: (value: Response) => void;
   const fetch = vi.fn(() => new Promise<Response>(resolve => { finish = resolve; })); vi.stubGlobal('fetch', fetch);
-  const controller = new AbortController(); const promise = loadQuantExecutionRange(rangeQuery, { pageSize: 1, signal: controller.signal });
+  const controller = new AbortController();
+  if (legacy) {
+    Object.defineProperty(controller.signal, 'throwIfAborted', { value: undefined });
+    Object.defineProperty(controller.signal, 'reason', { value: undefined });
+  }
+  const promise = loadQuantExecutionRange(rangeQuery, { pageSize: 1, signal: controller.signal });
   controller.abort(); finish(rangeJson(rangeResponse(records, 1, 1)));
   await expect(promise).rejects.toMatchObject({ name: 'AbortError' }); expect(fetch).toHaveBeenCalledOnce();
 });

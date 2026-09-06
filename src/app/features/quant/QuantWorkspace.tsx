@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router';
 import * as m from 'motion/react-m';
 import { SelectionGroup, SelectionIndicator, useEntranceMotion } from '../../components/StudioMotion';
 import { useWorkspaceState } from '../../hooks/useWorkspaceState';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { getQuantStrategies } from './quant-api';
 import { QuantDataQualityNotice, QuantEmptyState, QuantErrorState, QuantLoadingState, QuantSafetyNotice, QuantStatusBadge } from './QuantCommon';
 import { QuantDailyPage } from './QuantDailyPage';
@@ -34,6 +35,7 @@ const NAVIGATION = [
 
 export function QuantWorkspace() {
   const entrance = useEntranceMotion();
+  const compact = useMediaQuery('(max-width: 700px)');
   const location = useLocation();
   const navigate = useNavigate();
   useEffect(() => {
@@ -47,7 +49,7 @@ export function QuantWorkspace() {
     const workspace = workspaceRef.current;
     const navigation = navigationRef.current;
     if (!workspace || !navigation) return;
-    // Wrapped navigation changes height with screen width, zoom and font loading.
+    // Navigation changes height with screen width, zoom and font loading.
     const measure = () => workspace.style.setProperty('--quant-navigation-height', `${navigation.getBoundingClientRect().height}px`);
     measure();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
@@ -118,23 +120,29 @@ export function QuantWorkspace() {
           {!catalog?.items.length && <option value="">{catalog ? '暂无公开策略' : '加载策略目录…'}</option>}
           {catalog?.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>
-        <SelectionGroup><nav className="quant-subnav" aria-label="量化影子盘导航">
+        {compact ? <label className="quant-section-select"><span>功能</span><select aria-label="切换量化功能" value={section} onChange={event => {
+          const target = NAVIGATION.find(item => item.id === event.target.value);
+          if (target) changeSection(target.path);
+        }}>{NAVIGATION.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label> : <SelectionGroup><nav className="quant-subnav" aria-label="量化影子盘导航">
           {NAVIGATION.map(item => { const Icon = item.icon; return <button type="button" key={item.id} className={section === item.id ? 'is-active' : ''} aria-current={section === item.id ? 'page' : undefined} onClick={() => changeSection(item.path)}>
             <Icon size={14} />{item.label}<SelectionIndicator active={section === item.id} />
           </button>; })}
-        </nav></SelectionGroup>
+        </nav></SelectionGroup>}
       </div>
     </div>
     <div ref={dateToolbarRef} className="quant-date-toolbar">
       <form className="quant-filter-bar" onSubmit={event => { event.preventDefault(); applyDate(dateDraft); }}>
-        <label><span>交易日期（仅列出已有记录）</span><select aria-label="量化交易日期" disabled={!history.points} value={dateDraft} onChange={event => setDateDraft(event.target.value)}>
-          <option value="">最新已有交易日{latest ? ` · ${latest.trade_date}` : ''}</option>
+        <label><span>{compact ? '交易日期' : '交易日期（仅列出已有记录）'}</span><select aria-label="量化交易日期" disabled={!history.points} value={dateDraft} onChange={event => {
+          if (compact) applyDate(event.target.value);
+          else setDateDraft(event.target.value);
+        }}>
+          <option value="">{compact ? '最新' : '最新已有交易日'}{latest ? ` · ${latest.trade_date}` : ''}</option>
           {dateDraft && !history.points?.some(point => point.trade_date === dateDraft) && <option value={dateDraft} disabled>{dateDraft} · {history.points ? '无交易记录' : '正在核对'}</option>}
           {history.points?.map(point => <option key={point.trade_date} value={point.trade_date}>{point.trade_date}</option>)}
         </select></label>
-        <button type="submit" className="quant-button is-primary" disabled={!history.points || !!dateDraft && !history.points.some(point => point.trade_date === dateDraft)}>查看日期</button>
-        <button type="button" className="quant-button" onClick={() => applyDate('')}>最新已有交易日</button>
-        <button type="button" className="quant-button" disabled={!strategy || latestSnapshot.initialLoading} onClick={latestSnapshot.refresh}><RefreshCw size={14} />{latestSnapshot.refreshing ? '正在刷新' : '刷新数据'}</button>
+        {!compact && <><button type="submit" className="quant-button is-primary" disabled={!history.points || !!dateDraft && !history.points.some(point => point.trade_date === dateDraft)}>查看日期</button>
+        <button type="button" className="quant-button" onClick={() => applyDate('')}>最新已有交易日</button></>}
+        <button type="button" className="quant-button quant-refresh-button" aria-label={latestSnapshot.refreshing ? '正在刷新' : '刷新数据'} title="刷新数据" disabled={!strategy || latestSnapshot.initialLoading} onClick={latestSnapshot.refresh}><RefreshCw size={compact ? 18 : 14} /><span className={compact ? 'sr-only' : undefined}>{latestSnapshot.refreshing ? '正在刷新' : '刷新数据'}</span></button>
       </form>
       {latest && history.points && <p className="quant-date-range">已有记录区间 {latest.recording.start_date ?? '—'} 至 {latest.trade_date} · 共 {history.points.length} 个交易日</p>}
       {contextData && <div className="quant-snapshot-context" key={`${history.key}:${contextData.trade_date}:${contextData.snapshot_id}`}>

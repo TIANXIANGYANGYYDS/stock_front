@@ -67,6 +67,12 @@ body:has(.studio-shell[data-workspace="quant"]) { overflow: auto; }
 .quant-daily-select > span { color: var(--terminal-muted); font-size: 12px; }
 @media (max-width: 1200px) { .studio-shell .quant-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 700px) {
+  .studio-shell .quant-subnav-row { padding: 8px 10px; }
+  .studio-shell .quant-nav-group { display: grid; grid-template-columns: minmax(100px, .8fr) minmax(0, 1.2fr); gap: 10px; }
+  .studio-shell .quant-strategy-select, .studio-shell .quant-section-select { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 4px; min-width: 0; width: 100%; margin: 0; padding: 0; border: 0; }
+  .studio-shell .quant-strategy-select > span, .studio-shell .quant-section-select > span { color: var(--terminal-muted); font-size: 11px; line-height: 16px; }
+  .studio-shell .quant-strategy-select select, .studio-shell .quant-section-select select { width: 100%; min-width: 0; height: 44px; padding: 0 8px; border: 1px solid var(--terminal-border-strong); border-radius: 7px; background: var(--terminal-panel); color: var(--terminal-text); font: inherit; font-size: 16px; }
+  .studio-shell .quant-section-select select { border-color: var(--terminal-accent); background: var(--terminal-accent-soft); color: var(--terminal-accent); }
   .quant-detail-dialog { padding: 18px 14px; }
   .quant-detail-fields { grid-template-columns: minmax(0, 1fr); }
   .quant-detail-fields > .is-wide { grid-template-columns: minmax(110px, 1fr) minmax(0, 1.3fr); }
@@ -75,8 +81,12 @@ body:has(.studio-shell[data-workspace="quant"]) { overflow: auto; }
   .quant-detail-body { padding: 14px; }
   .studio-shell .quant-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .quant-date-toolbar { padding: 0 12px; }
-  .quant-date-toolbar .quant-filter-bar { display: flex; flex-wrap: wrap; gap: 8px; }
-  .quant-date-toolbar .quant-filter-bar label { flex-basis: 100%; }
+  .studio-shell .quant-date-toolbar .quant-filter-bar { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; padding: 10px 0; }
+  .quant-date-toolbar .quant-filter-bar label { min-width: 0; }
+  .studio-shell .quant-date-toolbar .quant-filter-bar select { width: 100%; min-width: 0; height: 44px; font-size: 16px; }
+  .studio-shell .quant-date-toolbar .quant-refresh-button { width: 44px; height: 44px; min-height: 44px; padding: 0; }
+  .quant-date-range { font-size: 11px; line-height: 1.6; margin-bottom: 8px; overflow-wrap: anywhere; }
+  .quant-snapshot-context { gap: 4px 10px; padding-bottom: 8px; }
   .quant-date-toolbar input { width: 100%; }
   .quant-public-meta { gap: 7px; font-size: 11px; }
   .quant-performance-chart { height: 260px; }

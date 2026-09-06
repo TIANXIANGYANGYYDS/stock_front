@@ -46,6 +46,19 @@ it('reports historical errors and stops after cancellation instead of exposing a
   await expect(loadQuantPerformance(overviewFixture())).rejects.toMatchObject({ status: 503 });
 });
 
+it('loads history and still cancels on mobile browsers without throwIfAborted or reason', async () => {
+  const controller = new AbortController();
+  Object.defineProperty(controller.signal, 'throwIfAborted', { value: undefined });
+  Object.defineProperty(controller.signal, 'reason', { value: undefined });
+  const fetch = vi.fn().mockResolvedValue(jsonResponse(performanceFixture()));
+  vi.stubGlobal('fetch', fetch);
+  const result = await loadQuantPerformance(overviewFixture(), { signal: controller.signal });
+  expect(result).toHaveLength(1);
+  controller.abort();
+  await expect(loadQuantPerformance(overviewFixture(), { signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
 it('never labels an intraday point as final close', () => {
   expect(performancePointLabel(overviewFixture({ runtime: { data_status: 'fresh' } }))).toContain('非最终收盘');
   expect(performancePointLabel(overviewFixture({ runtime: { data_status: 'closed_partial' } }))).toBe('收盘记录');

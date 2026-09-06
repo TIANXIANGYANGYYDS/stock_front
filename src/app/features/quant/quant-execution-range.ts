@@ -1,4 +1,5 @@
 import { ApiRequestError, type RequestOptions } from '../../lib/api';
+import { throwIfRequestAborted } from '../../lib/abort-signal';
 import { getQuantExecutionRangePage, QuantContractError } from './quant-api';
 import { EXECUTION_HISTORY_CONFLICT_MESSAGE, parseQuantDateTime } from './quant-format';
 import type { QuantExecutionRange, QuantExecutionRangeQuery } from './quant-execution-range-types';
@@ -11,11 +12,11 @@ export async function loadQuantExecutionRange(query: QuantExecutionRangeQuery, o
   pageSize?: number; cached?: QuantExecutionRange; onConflict?: () => void;
 } = {}): Promise<QuantExecutionRange> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    options.signal?.throwIfAborted();
+    throwIfRequestAborted(options.signal);
     try {
       // Every load revalidates the complete query. A latest-day timestamp cannot validate older history.
       const first = await getQuantExecutionRangePage(query, { page: 1, pageSize: options.pageSize ?? 200 }, options);
-      options.signal?.throwIfAborted();
+      throwIfRequestAborted(options.signal);
       const cached = options.cached;
       if (attempt === 0 && cached && cached.history_version === first.history_version && cached.total === first.total
         && cached.strategy_id === query.strategyId && cached.code === query.code && cached.start_date === query.startDate
@@ -25,7 +26,7 @@ export async function loadQuantExecutionRange(query: QuantExecutionRangeQuery, o
       const items = [...first.items];
       for (let page = 2; items.length < first.total; page += 1) {
         const next = await getQuantExecutionRangePage(query, { page, pageSize: first.page_size, historyVersion: first.history_version }, options);
-        options.signal?.throwIfAborted();
+        throwIfRequestAborted(options.signal);
         if (next.total !== first.total || next.items.length === 0) throw new QuantContractError('成交分页数量发生变化，请重试。');
         items.push(...next.items);
       }
@@ -37,7 +38,7 @@ export async function loadQuantExecutionRange(query: QuantExecutionRangeQuery, o
           || (a.trade_date ?? '').localeCompare(b.trade_date ?? '') || a.event_id.localeCompare(b.event_id);
       }) };
     } catch (error) {
-      options.signal?.throwIfAborted();
+      throwIfRequestAborted(options.signal);
       if (!(error instanceof ApiRequestError) || error.status !== 409) throw error;
       options.onConflict?.();
       if (attempt === 1) throw new ApiRequestError(409, EXECUTION_HISTORY_CONFLICT_MESSAGE);

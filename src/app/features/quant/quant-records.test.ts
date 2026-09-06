@@ -39,8 +39,12 @@ describe('complete quant records', () => {
     await expect(loadQuantRecords(truncated, 'strategy-a', {})).rejects.toThrow('未加载完整');
   });
 
-  it('stops fetching when cancelled even if the page loader ignores the abort signal', async () => {
+  it.each([false, true])('stops a loader that ignores cancellation, including legacy mobile signals: %s', async legacy => {
     const controller = new AbortController();
+    if (legacy) {
+      Object.defineProperty(controller.signal, 'throwIfAborted', { value: undefined });
+      Object.defineProperty(controller.signal, 'reason', { value: undefined });
+    }
     const loader = vi.fn(async () => { controller.abort(); return response(1); });
     await expect(loadQuantRecords(loader, 'strategy-a', {}, { signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
     expect(loader).toHaveBeenCalledTimes(1);

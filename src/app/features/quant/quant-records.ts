@@ -1,4 +1,5 @@
 import type { RequestOptions } from '../../lib/api';
+import { throwIfRequestAborted } from '../../lib/abort-signal';
 import type { QuantListParams } from './quant-api';
 import type { QuantPaginatedResponse } from './quant-types';
 import { assertSnapshot, getQuantPerformance, QuantContractError } from './quant-api';
@@ -12,7 +13,7 @@ type RecordFilters = Omit<QuantListParams, 'page' | 'pageSize'>;
 export async function loadQuantRecords<T>(
   loadPage: PageLoader<T>, strategyId: string, filters: RecordFilters, options: RequestOptions = {},
 ): Promise<QuantRecords<T>> {
-  const checkCancelled = () => options.signal?.throwIfAborted();
+  const checkCancelled = () => throwIfRequestAborted(options.signal);
   checkCancelled();
   const first = await loadPage(strategyId, { ...filters, page: 1, pageSize: 200 }, options);
   checkCancelled();
@@ -45,16 +46,16 @@ export async function loadQuantPerformance(snapshot: QuantOverviewData, options:
     throw new QuantContractError('账户记录起点缺失或无效，无法确定历史统计区间。');
   }
   const params = { startDate, endDate: snapshot.trade_date, pageSize: 200 };
-  options.signal?.throwIfAborted();
+  throwIfRequestAborted(options.signal);
   const first = await getQuantPerformance(snapshot.strategy_id, { ...params, page: 1 }, options);
   const items = [...first.items];
   for (let page = 2; items.length < first.total; page += 1) {
-    options.signal?.throwIfAborted();
+    throwIfRequestAborted(options.signal);
     const next = await getQuantPerformance(snapshot.strategy_id, { ...params, page }, options);
     if (next.total !== first.total || next.items.length === 0) throw new QuantContractError('收益记录在加载期间发生变化，请重新加载。');
     items.push(...next.items);
   }
-  options.signal?.throwIfAborted();
+  throwIfRequestAborted(options.signal);
   if (items.length !== first.total || new Set(items.map(item => item.trade_date)).size !== items.length) {
     throw new QuantContractError('收益历史数据不完整，请重新加载。');
   }
