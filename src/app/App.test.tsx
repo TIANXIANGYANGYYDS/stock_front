@@ -36,6 +36,7 @@ vi.mock('./components/TerminalHeader', () => ({
     <header>
       terminal header {indicesError} index price {realtimeIndices?.items[0]?.price ?? '--'}
       <button type="button" onClick={() => onViewChange('market')}>市场洞察</button>
+      <button type="button" onClick={() => onViewChange('quant')}>量化影子盘</button>
       <button type="button" onClick={() => onViewChange('creators')}>博主观点</button>
     </header>
   ),
@@ -69,6 +70,10 @@ vi.mock('./features/creators/CreatorInsightsView', () => ({
   CreatorInsightsView: () => <main data-testid="creator-insights">creator insights</main>,
 }));
 
+vi.mock('./features/quant/QuantWorkspace', () => ({
+  QuantWorkspace: () => <main data-testid="quant-workspace">quant workspace</main>,
+}));
+
 import App from './App';
 
 afterEach(() => {
@@ -77,9 +82,32 @@ afterEach(() => {
   apiMocks.getMarketOverview.mockReset();
   realtimeMocks.useRealtimeMarketIndices.mockReset();
   document.body.innerHTML = '';
+  window.history.replaceState({}, '', '/');
 });
 
 describe('App latest trading date gate', () => {
+  it('restores the workspace from browser history and lets the user retry the date gate', async () => {
+    prepareIndices();
+    apiMocks.getLatestMarketDates.mockRejectedValueOnce(new Error('暂时断网'))
+      .mockResolvedValue({ marketTradeDate: '2026-08-10', analysisDate: null });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<App />));
+    const retry = [...host.querySelectorAll('button')].find((button) => button.textContent === '重新加载');
+    expect(retry).toBeDefined();
+    await act(async () => retry!.click());
+    expect(host.textContent).toContain('workspace 2026-08-10');
+    const market = [...host.querySelectorAll('button')].find((button) => button.textContent === '市场洞察');
+    await act(async () => market!.click());
+    expect(window.history.state.usr.workspaceView).toBe('market');
+    await act(async () => root.unmount());
+    const refreshedRoot = createRoot(host);
+    await act(async () => refreshedRoot.render(<App />));
+    expect(host.querySelector('[data-testid="market-insights"]')).not.toBeNull();
+    await act(async () => refreshedRoot.unmount());
+  });
+
   function prepareIndices() {
     realtimeMocks.useRealtimeMarketIndices.mockReturnValue({
       data: {
@@ -256,6 +284,22 @@ describe('App latest trading date gate', () => {
 
     expect(host.textContent).toContain('index price 3966.59');
     expect(host.textContent).toContain('正在解析 Stock_Project 最新交易日');
+
+    await act(async () => root.unmount());
+  });
+
+  it('opens a deep-linked quant route without waiting for the market-date gate', async () => {
+    prepareIndices();
+    apiMocks.getLatestMarketDates.mockReturnValue(new Promise(() => undefined));
+    window.history.replaceState({}, '', '/quant/signals');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => root.render(<App />));
+
+    expect(host.querySelector('[data-testid="quant-workspace"]')).not.toBeNull();
+    expect(host.textContent).not.toContain('正在解析 Stock_Project 最新交易日');
 
     await act(async () => root.unmount());
   });

@@ -10,6 +10,29 @@ export interface ChartBar extends Omit<StockKlineBar, 'amount' | 'volume'> {
   volume: number;
 }
 
+const A_SHARE_LOT_SIZE = 100;
+
+function trailingAverage(values: number[], period: number): number | null {
+  if (values.length < period) return null;
+  const window = values.slice(-period);
+  return window.reduce((sum, value) => sum + value, 0) / period;
+}
+
+function calculateTemporaryMacd(closes: number[]): StockKlineBar['macd'] {
+  if (closes.length < 26) return { dif: null, dea: null, hist: null };
+  let ema12 = closes[0];
+  let ema26 = closes[0];
+  let dif = 0;
+  let dea = 0;
+  closes.slice(1).forEach((close) => {
+    ema12 = ema12 * (11 / 13) + close * (2 / 13);
+    ema26 = ema26 * (25 / 27) + close * (2 / 27);
+    dif = ema12 - ema26;
+    dea = dea * (8 / 10) + dif * (2 / 10);
+  });
+  return { dif, dea, hist: 2 * (dif - dea) };
+}
+
 function isValidPrice(value: number): boolean {
   return Number.isFinite(value) && value > 0;
 }
@@ -43,7 +66,7 @@ function finiteNonNegative(value: number | null | undefined): number {
 export function buildCurrentDayChartBars(
   dailyBars: StockKlineBar[],
   intradayBars: StockIntradayBar[],
-  _realtimeQuote: StockRealtimeQuote | null,
+  realtimeQuote: StockRealtimeQuote | null,
   realtimeTradingDate: string,
 ): ChartBar[] {
   const official = normalizeChartBars(dailyBars);
@@ -63,9 +86,24 @@ export function buildCurrentDayChartBars(
   const first = validMinuteBars[0];
   const last = validMinuteBars.at(-1);
   if (!first || !last) return official;
-  const close = last.close as number;
+  const minuteClose = last.close as number;
+  const realtimePrice = realtimeQuote && isValidPrice(realtimeQuote.price ?? 0)
+    ? realtimeQuote.price as number
+    : null;
+  const close = realtimePrice ?? minuteClose;
   const minuteHigh = Math.max(...validMinuteBars.map((bar) => bar.high as number));
   const minuteLow = Math.min(...validMinuteBars.map((bar) => bar.low as number));
+  const shareVolume = Math.max(
+    validMinuteBars.reduce((sum, bar) => sum + finiteNonNegative(bar.volume), 0),
+    finiteNonNegative(realtimeQuote?.volume),
+  );
+  const amount = Math.max(
+    validMinuteBars.reduce((sum, bar) => sum + finiteNonNegative(bar.amount), 0),
+    finiteNonNegative(realtimeQuote?.amount),
+  );
+  const currentVolume = shareVolume / A_SHARE_LOT_SIZE;
+  const closes = [...official.map((bar) => bar.close), close];
+  const volumes = [...official.map((bar) => bar.volume), currentVolume];
   const previousClose = official.at(-1)?.close;
   const changeAmount = typeof previousClose === 'number' && previousClose > 0
     ? close - previousClose
@@ -76,13 +114,27 @@ export function buildCurrentDayChartBars(
   const temporary: StockKlineBar = {
     date: realtimeTradingDate,
     open: first.open as number,
-    high: minuteHigh,
-    low: minuteLow,
+    high: Math.max(minuteHigh, close),
+    low: Math.min(minuteLow, close),
     close,
-    volume: validMinuteBars.reduce((sum, bar) => sum + finiteNonNegative(bar.volume), 0),
-    amount: validMinuteBars.reduce((sum, bar) => sum + finiteNonNegative(bar.amount), 0),
+    volume: currentVolume,
+    amount,
     changeAmount,
     changePercent,
+    ma: {
+      ma5: trailingAverage(closes, 5),
+      ma10: trailingAverage(closes, 10),
+      ma20: trailingAverage(closes, 20),
+      ma30: trailingAverage(closes, 30),
+      ma60: trailingAverage(closes, 60),
+    },
+    volumeMa: {
+      volMa5: trailingAverage(volumes, 5),
+      volMa10: trailingAverage(volumes, 10),
+      volMa20: trailingAverage(volumes, 20),
+      volMa60: trailingAverage(volumes, 60),
+    },
+    macd: calculateTemporaryMacd(closes),
   };
   return [...official, ...normalizeChartBars([temporary])];
 }

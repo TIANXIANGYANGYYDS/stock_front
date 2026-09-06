@@ -87,7 +87,7 @@ describe('StockNavigator', () => {
     ));
 
     expect(host.textContent).toContain('查询中');
-    expect([...host.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
+    expect([...host.querySelectorAll('.navigator-stock-row')].map((button) => button.textContent)).toEqual([
       expect.stringContaining('平安银行'),
       expect.stringContaining('浦发银行'),
     ]);

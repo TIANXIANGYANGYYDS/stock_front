@@ -1,0 +1,34 @@
+/* Shared markers move independently of labels, controls and data surfaces. */
+:where(.terminal-nav, .quant-subnav, .creator-directory-tabs, .creator-filter-buttons, .creator-detail-tabs, .news-window-group, .sentiment-filter-group) > button {
+  position: relative; isolation: isolate;
+}
+.studio-selection {
+  position: absolute; inset: 0; z-index: -1; display: block; pointer-events: none;
+  border-radius: inherit; background: var(--terminal-accent-soft);
+}
+.studio-sidebar .terminal-nav button.is-active,
+.studio-shell .quant-subnav button.is-active,
+.creator-directory-tabs button[aria-pressed="true"],
+.studio-shell .creator-filter-buttons button.is-active,
+.studio-shell .news-window-group button.is-active,
+.studio-shell .sentiment-filter-group button.is-active {
+  background: transparent; border-color: transparent; box-shadow: none;
+}
+.studio-sidebar .terminal-nav .studio-selection {
+  border: 1px solid var(--terminal-border-strong);
+  background: linear-gradient(115deg, var(--terminal-accent-soft), var(--terminal-panel));
+  box-shadow: inset 0 1px 0 var(--studio-edge-light), 0 3px 12px var(--studio-halo);
+}
+.creator-analysis-report .creator-detail-tabs button.is-active { border-bottom-color: transparent; }
+.studio-selection.is-underline {
+  inset: auto 0 -2px; height: 2px; border-radius: 2px;
+  background: var(--terminal-accent); box-shadow: 0 -2px 8px var(--studio-halo);
+}
+.creator-filter-disclosure { width: 100%; min-width: 0; flex: 0 0 100%; overflow: hidden; }
+.studio-shell > .terminal-main > main { animation: none; }
+@media (max-width: 959px) {
+  .studio-sidebar .terminal-nav .studio-selection { border: 0; background: var(--terminal-accent-soft); box-shadow: none; }
+}
+@media (max-width: 600px) {
+  .creator-filter-disclosure { order: 4; }
+}

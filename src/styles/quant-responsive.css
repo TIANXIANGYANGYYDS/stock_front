@@ -1,0 +1,58 @@
+/* Full-width tables, with labeled records when the available space is too narrow. */
+.quant-table-frame { container: quant-table / inline-size; }
+.studio-shell .quant-table { width: 100%; min-width: 0; table-layout: fixed; font-variant-numeric: tabular-nums; }
+.studio-shell .quant-table-scroll { scrollbar-gutter: auto; }
+.studio-shell .quant-table thead th { height: auto; padding: 8px 6px; font-size: 11px; line-height: 1.5; white-space: normal; box-shadow: 0 1px var(--terminal-border); }
+.studio-shell .quant-sort-button { gap: 3px; height: auto; min-height: 32px; white-space: normal; line-height: 1.5; }
+.studio-shell .quant-sort-button span { min-width: 0; overflow-wrap: anywhere; }
+.studio-shell .quant-sort-button svg { width: 10px; height: 10px; }
+.studio-shell .quant-table tbody td { height: auto; padding: 11px 6px; font-family: 'Geist Variable', 'Microsoft YaHei UI', sans-serif; font-size: 12px; line-height: 1.55; white-space: normal; overflow-wrap: anywhere; vertical-align: middle; }
+.studio-shell .quant-table td:first-child { position: static; box-shadow: none; }
+.studio-shell .quant-table td strong { font-size: 12px; }
+.studio-shell .quant-table td small { font-family: inherit; font-size: 10px; }
+.studio-shell .quant-table td::before { display: none; }
+.studio-shell .quant-table .quant-status { max-width: 100%; padding: 3px 5px; font-size: 10px; line-height: 1.6; white-space: normal; overflow-wrap: anywhere; }
+.studio-shell .quant-table .quant-pnl-pair { font-family: inherit; gap: 2px; }
+.studio-shell .quant-table .quant-pnl-pair strong { font-size: 12px; font-weight: 550; }
+.studio-shell .quant-table-time { display: block; font-size: 11px; line-height: 1.65; font-variant-numeric: tabular-nums; }
+.studio-shell .quant-table-time > span { display: block; }
+.studio-shell .quant-table-time > span + span { color: var(--terminal-muted); }
+.studio-shell .quant-row-detail-button { min-width: 0; white-space: normal; }
+.studio-shell .quant-overview-split { grid-template-columns: minmax(0, 1fr); }
+.studio-shell .quant-state-counts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+@container quant-table (max-width: 900px) {
+  .studio-shell .quant-table { display: block; }
+  .studio-shell .quant-table thead { position: sticky; top: 0; z-index: 6; display: block; padding: 8px 12px; border-bottom: 1px solid var(--terminal-border); background: var(--terminal-panel-soft); }
+  .studio-shell .quant-table thead tr { display: flex; flex-wrap: wrap; gap: 5px; }
+  .studio-shell .quant-table thead th { position: static; display: block; padding: 0; border: 0; box-shadow: none; background: transparent; font-size: 10px; }
+  .studio-shell .quant-table .quant-sort-button { min-height: 30px; padding: 3px 7px; border: 1px solid var(--terminal-border); border-radius: 6px; background: var(--terminal-panel); }
+  .studio-shell .quant-table .quant-sort-button.is-active { border-color: var(--terminal-accent); background: var(--terminal-accent-soft); }
+  .studio-shell .quant-table th:not(:has(button)) { align-self: center; padding: 4px 7px; }
+  .studio-shell .quant-table tbody { display: block; padding: 0 12px; }
+  .studio-shell .quant-table tbody tr { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 14px 0; border-bottom: 1px solid var(--terminal-border); gap: 12px 16px; }
+  .studio-shell .quant-table tbody tr:last-child { border-bottom: 0; }
+  .studio-shell .quant-table tbody td { display: block; min-width: 0; padding: 0; border: 0; box-shadow: none; background: transparent; font-size: 12px; }
+  .studio-shell .quant-table tbody td::before { content: attr(data-label); display: block; margin-bottom: 4px; color: var(--terminal-muted); font-family: 'Geist Variable', 'Microsoft YaHei UI', sans-serif; font-size: 10px; font-weight: 400; }
+  .studio-shell .quant-table tbody td:first-child { grid-column: 1 / -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
+  .studio-shell .quant-table tbody td:first-child::before { display: none; }
+  .studio-shell .quant-table tbody td:first-child strong { font-size: 14px; }
+  .studio-shell .quant-table tbody td:first-child small { margin: 0; }
+  .studio-shell .quant-table tbody tr:hover > td { background: transparent; }
+  .studio-shell .quant-table tbody tr.is-clickable:hover { background: var(--terminal-panel-soft); }
+}
+
+@container quant-table (max-width: 520px) {
+  .studio-shell .quant-table tbody tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 959px) {
+  .studio-shell .quant-table-scroll, .studio-shell .quant-recent-section .quant-table-scroll { max-height: none; overflow: visible; }
+  .studio-shell .quant-table thead { position: static; }
+  .studio-shell .quant-subnav { flex-wrap: wrap; overflow: visible; }
+  .studio-shell .quant-subnav button { min-height: 36px; }
+}
+
+@media (max-width: 600px) {
+  .studio-shell .quant-state-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

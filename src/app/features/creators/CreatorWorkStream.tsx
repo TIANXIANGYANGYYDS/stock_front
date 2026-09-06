@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -7,7 +8,7 @@ import {
   RefreshCw,
   TriangleAlert,
 } from 'lucide-react';
-import type { ComponentType } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import type { CreatorWorkSummary } from '../../lib/api';
 import type { CreatorDirectionFilter } from './creator-opinion-state';
 
@@ -40,7 +41,7 @@ function platformLabel(platform: string): string {
 function directionMeta(direction: string): {
   label: string;
   tone: string;
-  Icon: ComponentType<{ size?: number }>;
+  Icon: LucideIcon;
 } {
   if (direction === 'bullish') return { label: '看多', tone: 'bullish', Icon: ArrowUpRight };
   if (direction === 'bearish') return { label: '看空', tone: 'bearish', Icon: ArrowDownRight };
@@ -66,14 +67,27 @@ export function CreatorWorkStream({
   onClearFilters,
   onRetry,
 }: CreatorWorkStreamProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const selectedRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const list = listRef.current;
+    const selected = selectedRef.current;
+    if (!list || !selected) return;
+    const bounds = list.getBoundingClientRect();
+    const row = selected.getBoundingClientRect();
+    if (row.top < bounds.top) list.scrollTop += row.top - bounds.top;
+    else if (row.bottom > bounds.bottom) list.scrollTop += row.bottom - bounds.bottom;
+  }, [selectedWorkKey, loading]);
+
   return (
     <section className="terminal-panel creator-work-stream">
       <header className="creator-panel-head">
-        <div><FileSearch size={15} /><strong>最新观点流</strong></div>
+        <div><FileSearch size={15} /><strong>最新作品</strong></div>
         <small>{loading ? '更新中' : items.length + ' / ' + total + ' 条作品'}</small>
       </header>
       <div className="creator-stream-summary">
-        方向：{directionFilter === 'all' ? '全部' : directionMeta(directionFilter).label}
+        {directionFilter === 'all' ? '按发布时间排序 · 选择作品阅读分析' : '已加载作品中筛选：' + directionMeta(directionFilter).label}
       </div>
 
       {loading && <div className="terminal-empty"><span className="loading-pulse" />正在加载博主观点...</div>}
@@ -93,7 +107,7 @@ export function CreatorWorkStream({
       )}
 
       {!loading && items.length > 0 && (
-        <div className="creator-work-list terminal-scroll">
+        <div ref={listRef} className="creator-work-list terminal-scroll">
           {items.map((work) => {
             const verifiableCount = work.opinions.filter(
               (opinion) => opinion.verifiable === true,
@@ -105,6 +119,7 @@ export function CreatorWorkStream({
               <button
                 type="button"
                 key={work.workKey}
+                ref={selectedWorkKey === work.workKey ? selectedRef : undefined}
                 className={'creator-work-card ' + (selectedWorkKey === work.workKey ? 'is-active' : '')}
                 aria-pressed={selectedWorkKey === work.workKey}
                 onClick={() => onSelect(work.workKey)}
@@ -114,23 +129,20 @@ export function CreatorWorkStream({
                 <em>{platformLabel(work.platform)}</em>
                 <time>{publishedLabel(work.publishedAt)}</time>
               </span>
-              <strong className="creator-work-title">{work.title}</strong>
+              <strong className="creator-work-title">{work.opinions[0]?.claim || work.title || '暂无观点预览'}</strong>
               <span className="creator-work-preview">
-                {work.opinions[0]?.claim || work.title || '暂无观点预览'}
+                {work.title}
               </span>
               <span className="creator-opinion-chips">
-                {work.opinions.slice(0, 3).map((opinion) => {
+                {work.opinions.slice(0, 2).map((opinion) => {
                   const { Icon, label, tone } = directionMeta(opinion.direction);
-                  const score = opinion.stanceScore === null
-                    ? ''
-                    : ' ' + (opinion.stanceScore > 0 ? '+' : '') + opinion.stanceScore;
                   return (
                     <em className={'creator-direction-chip is-' + tone} key={opinion.opinionId}>
-                      <Icon size={11} />{label} · {opinion.targetName}{score}
+                      <Icon size={11} />{label} · {opinion.targetName}
                     </em>
                   );
                 })}
-                {work.opinions.length > 3 && <em>+{work.opinions.length - 3}</em>}
+                {work.opinions.length > 2 && <em>+{work.opinions.length - 2}</em>}
               </span>
                 <small className="creator-work-count">
                   共 {work.opinions.length} 条观点 · 可验证 {verifiableCount} · 长期/不可量化 {longTermCount}

@@ -169,6 +169,50 @@ function setSearchValue(host: HTMLElement, value: string): void {
 }
 
 describe('DecisionWorkspace realtime stock coordination', () => {
+  it('opens an explicitly requested stock and handles another request while already in the workspace', async () => {
+    vi.useFakeTimers();
+    apiMocks.getStockList.mockResolvedValue([]);
+    apiMocks.getStockDetail.mockResolvedValue(null);
+    quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
+    quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    quoteMocks.useStockIntraday.mockReturnValue(pollingState(null));
+    const host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host);
+    await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-09-04" requestedStockCode="600519" stockRequestKey="first" />));
+    await act(async () => vi.advanceTimersByTimeAsync(180));
+    expect(host.textContent).toContain('selected:600519');
+    expect(apiMocks.getStockList).toHaveBeenLastCalledWith('2026-09-04', '600519', expect.any(AbortSignal));
+    await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-09-04" requestedStockCode="000001" stockRequestKey="second" />));
+    await act(async () => vi.advanceTimersByTimeAsync(180));
+    expect(host.textContent).toContain('selected:000001');
+    expect(apiMocks.getStockDetail).toHaveBeenLastCalledWith('000001', '2026-09-04', expect.any(AbortSignal));
+  });
+
+  it('keeps the chart selection when search results change or become empty', async () => {
+    vi.useFakeTimers();
+    apiMocks.getStockList.mockResolvedValueOnce([{
+      code: '000001', name: '平安银行', tradeDate: '2026-08-10', close: 12, changePercent: 1, amount: 10,
+    }]).mockResolvedValueOnce([{
+      code: '600000', name: '浦发银行', tradeDate: '2026-08-10', close: 11, changePercent: 1, amount: 9,
+    }]).mockResolvedValueOnce([]);
+    apiMocks.getStockDetail.mockResolvedValue(null);
+    quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
+    quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    quoteMocks.useStockIntraday.mockReturnValue(pollingState(null));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-08-10" />));
+    await act(async () => vi.advanceTimersByTimeAsync(180));
+    await act(async () => setSearchValue(host, '浦发'));
+    await act(async () => vi.advanceTimersByTimeAsync(180));
+    expect(host.textContent).toContain('600000:2026-08-10');
+    expect(host.textContent).toContain('selected:000001');
+    await act(async () => setSearchValue(host, '无结果'));
+    await act(async () => vi.advanceTimersByTimeAsync(180));
+    expect(host.textContent).toContain('selected:000001');
+    expect(apiMocks.getStockDetail).toHaveBeenCalledTimes(1);
+  });
+
   it('uses the selected quote consistently and requests current-session minutes for a missing daily bar', async () => {
     vi.useFakeTimers();
     apiMocks.getStockList.mockResolvedValue([{

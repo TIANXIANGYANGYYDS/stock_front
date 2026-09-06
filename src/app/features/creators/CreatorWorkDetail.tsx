@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useWorkspaceState } from '../../hooks/useWorkspaceState';
+import { ReadingProgress } from '../../components/ReadingProgress';
+import * as m from 'motion/react-m';
+import { SelectionGroup, SelectionIndicator, useEntranceMotion } from '../../components/StudioMotion';
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -12,10 +16,11 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import type { ComponentType } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import type { CreatorOpinionAnalysis, CreatorWorkDetail } from '../../lib/api';
 import {
   chooseCreatorSourceText,
+  effectiveSampleCount,
   mergeOpinionVerification,
   verificationPresentation,
   type VerificationTone,
@@ -28,12 +33,14 @@ interface CreatorWorkDetailPanelProps {
   error: string | null;
   onRetry: () => void;
   onClose: () => void;
+  showCloseButton?: boolean;
+  navigation?: ReactNode;
 }
 
 function directionMeta(direction: string): {
   label: string;
   tone: string;
-  Icon: ComponentType<{ size?: number }>;
+  Icon: LucideIcon;
 } {
   if (direction === 'bullish') return { label: '看多', tone: 'bullish', Icon: ArrowUpRight };
   if (direction === 'bearish') return { label: '看空', tone: 'bearish', Icon: ArrowDownRight };
@@ -62,12 +69,17 @@ export function CreatorWorkDetailPanel({
   error,
   onRetry,
   onClose,
+  showCloseButton = true,
+  navigation,
 }: CreatorWorkDetailPanelProps) {
-  const [tab, setTab] = useState<'analysis' | 'source'>('analysis');
+  const [tab, setTab] = useWorkspaceState<'analysis' | 'source'>('creators.detailTab', 'analysis');
+  const contentRef = useRef<HTMLDivElement>(null);
+  const entrance = useEntranceMotion();
+  const summaryEntrance = useEntranceMotion({ lift: true });
 
   useEffect(() => {
-    setTab('analysis');
-  }, [work?.workKey]);
+    if (contentRef.current) contentRef.current.scrollTop = 0;
+  }, [work?.workKey, tab, loading]);
 
   const opinionRows = useMemo(
     () => mergeOpinionVerification(work?.opinions ?? [], creatorAnalysis),
@@ -76,12 +88,16 @@ export function CreatorWorkDetailPanel({
   const source = work
     ? chooseCreatorSourceText(work)
     : { label: '暂无可读原文', text: '' };
+  const sampleCount = creatorAnalysis ? effectiveSampleCount(creatorAnalysis) : 0;
+  const platformLabels: Record<string, string> = { weibo: '微博', douyin: '抖音', sina_blog: '新浪博客', wechat: '微信', bilibili: '哔哩哔哩' };
+  const contentTypeLabels: Record<string, string> = { post: '图文', image_post: '图文', video: '视频', article: '文章', text: '文字' };
 
   return (
-    <aside className="terminal-panel creator-work-detail" aria-label="作品与观点详情">
+    <section className="terminal-panel creator-work-detail creator-analysis-report" aria-label="作品与观点详情">
       <header className="creator-panel-head">
-        <div><Sparkles size={15} /><strong>作品与观点详情</strong></div>
-        <button type="button" className="creator-detail-close" onClick={onClose} aria-label="关闭详情"><X size={15} /></button>
+        <div><Sparkles size={15} /><strong>重点分析</strong></div>
+        {navigation}
+        {showCloseButton && <button type="button" className="creator-detail-close" onClick={onClose} aria-label="关闭详情"><X size={15} /></button>}
       </header>
 
       {loading && <div className="terminal-empty"><span className="loading-pulse" />正在加载作品详情...</div>}
@@ -98,21 +114,20 @@ export function CreatorWorkDetailPanel({
 
       {!loading && !error && work && (
         <>
-          <div className="creator-detail-heading">
-            <span>{work.creatorName} · {work.platform.toUpperCase()}</span>
-            <h2>{work.title}</h2>
-            <div>
-              <time><Clock3 size={11} />{work.publishedAt.replace('T', ' ').slice(0, 16)}</time>
-              <span>内容类型 {work.contentType || '未知'}</span>
-              {work.canonicalUrl && (
-                <a href={work.canonicalUrl} target="_blank" rel="noreferrer noopener">
-                  查看原始内容<ExternalLink size={11} />
-                </a>
-              )}
+          <div className="creator-report-context">
+            <div className="creator-report-author">
+              <span className="creator-author-mark" aria-hidden="true">{work.creatorName.slice(0, 1)}</span>
+              <div><strong>{work.creatorName}</strong><span>{platformLabels[work.platform] || work.platform.toUpperCase()}<time><Clock3 size={11} />{dateTimeLabel(work.publishedAt)}</time></span></div>
+            </div>
+            <div className="creator-author-evidence">
+              {creatorAnalysis?.accuracyScore != null ? <>
+                <span>历史准确率 <b>{creatorAnalysis.accuracyScore.toFixed(2)}%</b></span>
+                <small>{sampleCount} 个有效样本{sampleCount < 5 && ' · 样本较少'}</small>
+              </> : <span>暂无历史评分</span>}
             </div>
           </div>
 
-          <div className="creator-detail-tabs" aria-label="详情内容">
+          <SelectionGroup><div className="creator-detail-tabs" aria-label="详情内容">
             <button
               type="button"
               aria-pressed={tab === 'analysis'}
@@ -120,6 +135,7 @@ export function CreatorWorkDetailPanel({
               onClick={() => setTab('analysis')}
             >
               观点分析
+              <SelectionIndicator active={tab === 'analysis'} underline />
             </button>
             <button
               type="button"
@@ -128,17 +144,27 @@ export function CreatorWorkDetailPanel({
               onClick={() => setTab('source')}
             >
               原始内容
+              <SelectionIndicator active={tab === 'source'} underline />
             </button>
-          </div>
+            {work.canonicalUrl && <a href={work.canonicalUrl} target="_blank" rel="noreferrer noopener">原始作品<ExternalLink size={12} /></a>}
+          </div></SelectionGroup>
 
           {tab === 'analysis' && (
-            <div className="creator-detail-scroll terminal-scroll">
-              <section className="creator-ai-summary">
-                <h3><Sparkles size={13} />AI 内容摘要</h3>
+            <m.div key={`${work.workKey}:analysis`} ref={contentRef} className="creator-detail-scroll terminal-scroll" {...entrance}>
+              <ReadingProgress />
+              <m.section className="creator-ai-summary" {...summaryEntrance}>
+                <h2><Sparkles size={15} />核心摘要</h2>
                 <p>{work.summary || '暂无 AI 摘要'}</p>
-                <small>AI 提取仅用于信息整理，不构成投资建议</small>
-              </section>
+                {opinionRows.length > 1 && <nav className="creator-analysis-targets" aria-label="本篇分析标的">
+                  {opinionRows.map(({ opinion }, index) => <button type="button" key={opinion.opinionId || index} onClick={() => {
+                    const target = contentRef.current?.querySelector<HTMLElement>('[data-opinion-index="' + index + '"]');
+                    target?.scrollIntoView({ block: 'start', behavior: 'auto' });
+                    target?.focus({ preventScroll: true });
+                  }}>{opinion.targetName || '观点 ' + (index + 1)}<ArrowDownRight size={12} /></button>)}
+                </nav>}
+              </m.section>
 
+              <div className="creator-analysis-section-head"><h2>观点拆解</h2><span>{opinionRows.length} 条结构化观点</span></div>
               <div className="creator-opinion-detail-list">
                 {opinionRows.length === 0 && <div className="terminal-empty">该作品暂无结构化 A 股观点</div>}
                 {opinionRows.map(({ opinion, verification, pending }, index) => {
@@ -153,7 +179,7 @@ export function CreatorWorkDetailPanel({
                     ? ''
                     : (opinion.stanceScore > 0 ? '+' : '') + opinion.stanceScore;
                   return (
-                    <article className="creator-opinion-detail-card" key={opinion.opinionId || index}>
+                    <article className="creator-opinion-detail-card" key={opinion.opinionId || index} data-opinion-index={index} tabIndex={-1}>
                       <header>
                         <span className={'creator-direction-chip is-' + direction.tone}>
                           <direction.Icon size={12} />{direction.label}
@@ -168,15 +194,12 @@ export function CreatorWorkDetailPanel({
                       </header>
                       <h3>{opinion.claim || verification?.opinion || '观点正文缺失'}</h3>
                       <div className="creator-opinion-metrics">
-                        <span>类型 {opinion.targetType || '未知'}</span>
                         {strength && <span>立场 {strength}</span>}
                         {opinion.confidence !== null && <span>置信度 {(opinion.confidence * 100).toFixed(0)}%</span>}
                         {opinion.horizon && <span>周期 {opinion.horizon}</span>}
-                        <span>
-                          有效期 {dateTimeLabel(opinion.validFrom)} 至 {dateTimeLabel(opinion.validUntil)}
-                        </span>
-                        {opinion.verificationDate && <span>验证日 {opinion.verificationDate}</span>}
                       </div>
+                      <div className="creator-opinion-evidence">
+                      {(opinion.conditions.length > 0 || opinion.metric) && <section className="creator-opinion-basis">
                       {opinion.conditions.length > 0 && (
                         <div className="creator-opinion-conditions">
                           <b>成立条件</b>
@@ -184,31 +207,44 @@ export function CreatorWorkDetailPanel({
                         </div>
                       )}
                       {opinion.metric && <p className="creator-opinion-metric"><b>衡量指标：</b>{opinion.metric}</p>}
-                      {opinion.sourceQuote && <blockquote>“{opinion.sourceQuote}”</blockquote>}
-                      {verification?.reason && (
-                        <div className="creator-verification-reason">
-                          <b>验证说明</b>
-                          <p>{verification.reason}</p>
-                          {verification.verifiedAt && <small>验证时间 {verification.verifiedAt.replace('T', ' ').slice(0, 16)}</small>}
-                        </div>
-                      )}
+                      </section>}
+                      <section className="creator-verification-reason">
+                        <b>{verification ? '验证说明' : '验证进展'}</b>
+                        <p>{verification?.reason || (opinion.verifiable === false
+                          ? '长期或不可量化的观点，不纳入量化验证。'
+                          : verification ? '暂无详细验证说明。'
+                            : opinion.verificationDate ? '等待验证日结果，当前尚无验证结论。' : '尚未提供验证结果。')}</p>
+                        {opinion.verifiable !== false && opinion.verificationDate && <small>验证日 {opinion.verificationDate}</small>}
+                        {verification?.verifiedAt && <small>验证时间 {dateTimeLabel(verification.verifiedAt)}</small>}
+                      </section>
+                      </div>
+                      <details className="creator-opinion-reference">
+                        <summary>原文依据与有效期</summary>
+                        {opinion.sourceQuote && <blockquote>“{opinion.sourceQuote}”</blockquote>}
+                        <p>有效期 {dateTimeLabel(opinion.validFrom)} 至 {dateTimeLabel(opinion.validUntil)}</p>
+                        <p>标的类型 {({ stock: '个股', sector: '板块', index: '指数', market: '市场' } as Record<string, string>)[opinion.targetType] || opinion.targetType || '未知'}</p>
+                      </details>
                     </article>
                   );
                 })}
               </div>
-            </div>
+              <p className="creator-analysis-note">AI 提取仅用于信息整理，不构成投资建议</p>
+            </m.div>
           )}
 
           {tab === 'source' && (
-            <div className="creator-source-pane terminal-scroll">
+            <m.div key={`${work.workKey}:source`} ref={contentRef} className="creator-source-pane terminal-scroll" {...entrance}>
+              <ReadingProgress />
+              <h2>{work.title}</h2>
+              <p className="creator-source-meta">内容类型 {contentTypeLabels[work.contentType] || work.contentType || '未知'}</p>
               <div><FileText size={13} /><strong>{source.label}</strong></div>
               {source.text
                 ? <p>{source.text}</p>
                 : <div className="terminal-empty">暂无可读原文</div>}
-            </div>
+            </m.div>
           )}
         </>
       )}
-    </aside>
+    </section>
   );
 }

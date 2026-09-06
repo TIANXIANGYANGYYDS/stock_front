@@ -43,7 +43,7 @@ afterEach(() => {
 });
 
 describe('MarketAnalysis details', () => {
-  it('renders the morning report in the native terminal structure', async () => {
+  it('keeps the market judgment and mainline reasons directly readable', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -51,11 +51,9 @@ describe('MarketAnalysis details', () => {
     await act(async () => root.render(<MarketAnalysis analysisDate="2026-08-11" />));
     await act(async () => Promise.resolve());
 
-    expect(host.querySelector('.market-analysis-panel')).not.toBeNull();
-    expect(host.querySelector('.market-analysis-date')?.textContent).toContain('2026-08-11');
-    expect(host.querySelectorAll('.market-mainline-row')).toHaveLength(1);
-    expect(host.querySelector('[class*="hover:scale"]')).toBeNull();
-    expect(host.textContent).toContain('后端盘前分析');
+    expect(host.textContent).toContain('盘前分析日期：2026-08-11');
+    expect(host.textContent).toContain('结构性防守\n流动性收缩风险延续');
+    expect(host.textContent).toContain('风险等级 high');
     expect(host.textContent).toContain('国产替代逻辑强化');
     expect(host.textContent).toContain('市场研判');
 
@@ -76,15 +74,21 @@ describe('MarketAnalysis details', () => {
     const mainline = [...host.querySelectorAll('button')]
       .find((button) => button.textContent?.includes('软件开发'));
     if (!mainline) throw new Error('Missing morning mainline');
+    mainline.focus();
     await act(async () => mainline.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
-    const dialog = host.querySelector('[role="dialog"]');
+    const dialog = document.querySelector('[role="dialog"]');
     expect(dialog?.textContent).toContain('软件开发');
     expect(dialog?.textContent).toContain('主攻方向');
     expect(dialog?.textContent).toContain('置信度 70');
     expect(dialog?.textContent).toContain('国产替代逻辑强化');
     expect(dialog?.textContent).toContain('冲高回落');
     expect(dialog?.textContent).toContain('结构性防守');
+
+    await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(mainline);
 
     await act(async () => root.unmount());
   });

@@ -19,9 +19,12 @@ import { ProfessionalCandlestickChart } from '../chart/ProfessionalCandlestickCh
 import { DecisionPanel } from './DecisionPanel';
 import { StockNavigator } from './StockNavigator';
 import { selectSnapshotBar } from './snapshot-state';
+import { useWorkspaceState } from '../../hooks/useWorkspaceState';
 
 interface DecisionWorkspaceProps {
   preferredTradeDate: string;
+  requestedStockCode?: string;
+  stockRequestKey?: string;
 }
 
 function errorText(error: unknown, fallback: string): string {
@@ -37,18 +40,27 @@ function isAbortError(error: unknown): boolean {
 
 export function DecisionWorkspace({
   preferredTradeDate,
+  requestedStockCode,
+  stockRequestKey,
 }: DecisionWorkspaceProps) {
   const [stockItems, setStockItems] = useState<StockListItem[]>([]);
-  const [query, setQuery] = useState('');
-  const [selectedStockCode, setSelectedStockCode] = useState('');
+  const [query, setQuery] = useWorkspaceState('decision.query', '');
+  const [selectedStockCode, setSelectedStockCode] = useWorkspaceState('decision.stock', '');
   const [selectedStock, setSelectedStock] = useState<SectorStock | null>(null);
   const [activeDate, setActiveDate] = useState<string | null>(null);
   const [listLoading, setListLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [chartMode, setChartMode] = useState<'daily' | 'intraday'>('daily');
-  const [intradayInterval, setIntradayInterval] = useState<IntradayInterval>('1m');
+  const [chartMode, setChartMode] = useWorkspaceState<'daily' | 'intraday'>('decision.mode', 'daily');
+  const [intradayInterval, setIntradayInterval] = useWorkspaceState<IntradayInterval>('decision.interval', '1m');
+  const [listReload, setListReload] = useState(0);
+  const [detailReload, setDetailReload] = useState(0);
+  useEffect(() => {
+    if (!requestedStockCode) return;
+    setQuery(requestedStockCode);
+    setSelectedStockCode(requestedStockCode);
+  }, [requestedStockCode, stockRequestKey]);
   const normalizedQuery = query.trim();
   const batchRealtime = useRealtimeStocks(stockItems.map((item) => item.code));
   const selectedRealtime = useRealtimeStock(selectedStockCode);
@@ -118,7 +130,7 @@ export function DecisionWorkspace({
           if (controller.signal.aborted) return;
           setStockItems(items);
           setSelectedStockCode((current) => (
-            items.some((item) => item.code === current) ? current : items[0]?.code || ''
+            current || items[0]?.code || ''
           ));
         })
         .catch((error: unknown) => {
@@ -134,7 +146,7 @@ export function DecisionWorkspace({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [preferredTradeDate, normalizedQuery]);
+  }, [preferredTradeDate, normalizedQuery, listReload]);
 
   useEffect(() => {
     setActiveDate(null);
@@ -164,7 +176,7 @@ export function DecisionWorkspace({
     return () => {
       controller.abort();
     };
-  }, [preferredTradeDate, selectedStockCode]);
+  }, [preferredTradeDate, selectedStockCode, detailReload]);
 
   return (
     <main className="decision-grid">
@@ -179,11 +191,12 @@ export function DecisionWorkspace({
         realtimeError={batchRealtime.error}
         onQueryChange={setQuery}
         onSelect={setSelectedStockCode}
+        onRetry={() => setListReload((value) => value + 1)}
       />
       <ProfessionalCandlestickChart
         stock={currentSelectedStock}
         stockCode={selectedStockCode}
-        stockName={selectedListItem?.name ?? ''}
+        stockName={selectedListItem?.name ?? currentSelectedStock?.name ?? ''}
         loading={detailLoading}
         realtimeData={selectedRealtime.data}
         realtimeLoading={selectedRealtime.initialLoading}
@@ -204,7 +217,12 @@ export function DecisionWorkspace({
         bar={selectSnapshotBar(currentSelectedStock, activeDate)}
         loading={detailLoading}
       />
-      {detailError && <div className="workspace-floating-error">{detailError}</div>}
+      {detailError && (
+        <div className="workspace-floating-error" role="alert">
+          <span>{detailError}</span>
+          <button type="button" className="terminal-button" onClick={() => setDetailReload((value) => value + 1)}>重试 K 线</button>
+        </div>
+      )}
     </main>
   );
 }

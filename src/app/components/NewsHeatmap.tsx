@@ -45,6 +45,7 @@ export function NewsHeatmap({ bizDate, window, onSectorClick, selectedSector }: 
   const [data, setData] = useState<NewsHeatmapResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,7 +75,7 @@ export function NewsHeatmap({ bizDate, window, onSectorClick, selectedSector }: 
     return () => {
       cancelled = true;
     };
-  }, [bizDate, window]);
+  }, [bizDate, window, reload]);
 
   const hotSectors = data?.items ?? [];
   const baseSeries = data?.series ?? [];
@@ -91,13 +92,13 @@ export function NewsHeatmap({ bizDate, window, onSectorClick, selectedSector }: 
     switch (sentiment) {
       case 'positive':
         return (
-          <span className="px-2 py-0.5 bg-green-500/10 border border-green-500/30 text-green-400 rounded text-xs">
+          <span className="px-2 py-0.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded text-xs">
             利好
           </span>
         );
       case 'negative':
         return (
-          <span className="px-2 py-0.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded text-xs">
+          <span className="px-2 py-0.5 bg-green-500/10 border border-green-500/30 text-green-400 rounded text-xs">
             利空
           </span>
         );
@@ -115,27 +116,27 @@ export function NewsHeatmap({ bizDate, window, onSectorClick, selectedSector }: 
       <div className="px-5 py-4 border-b border-slate-800/50">
         <div className="flex items-center gap-2">
           <Flame className="w-4 h-4 text-orange-400" />
-          <h3 className="text-sm text-white">版块新闻热度</h3>
+          <h3 className="text-sm text-white">板块新闻热度</h3>
         </div>
         <p className="text-xs text-slate-500 mt-1">Stock_Project 资讯热度与情绪 · {bizDate}</p>
       </div>
 
       <div className="p-5">
         {loading && <div className="text-xs text-slate-400 mb-3">热度加载中...</div>}
-        {!loading && error && <div className="text-xs text-red-400 mb-3">{error}</div>}
+        {!loading && error && <div className="text-xs text-red-400 mb-3 flex items-center gap-3" role="alert"><span>{error}</span><button type="button" className="terminal-button" onClick={() => setReload((value) => value + 1)}>重试</button></div>}
 
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={displayChartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} opacity={0.3} />
-            <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#64748b' }} stroke="#334155" tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: '#64748b' }} stroke="#334155" tickLine={false} width={35} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--studio-chart-grid)" vertical={false} />
+            <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--terminal-muted)' }} stroke="var(--terminal-border)" tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: 'var(--terminal-muted)' }} stroke="var(--terminal-border)" tickLine={false} width={35} />
             <Tooltip
               contentStyle={{
-                backgroundColor: '#1e293b',
-                border: '1px solid #334155',
+                backgroundColor: 'var(--terminal-panel)',
+                border: '1px solid var(--terminal-border)',
                 borderRadius: '8px',
                 fontSize: '11px',
-                color: '#e2e8f0',
+                color: 'var(--terminal-text)',
               }}
             />
             <Legend wrapperStyle={{ fontSize: '11px' }} />
@@ -166,6 +167,15 @@ export function NewsHeatmap({ bizDate, window, onSectorClick, selectedSector }: 
             {hotSectors.map((sector) => (
               <div
                 key={`${sector.rank}-${sector.name}`}
+                role="button"
+                tabIndex={0}
+                aria-pressed={selectedSector === sector.name}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSectorClick(selectedSector === sector.name ? null : sector.name);
+                  }
+                }}
                 className={`grid grid-cols-5 gap-px cursor-pointer transition-colors ${
                   selectedSector === sector.name ? 'bg-blue-500/20' : 'bg-slate-800/20 hover:bg-slate-800/40'
                 }`}
@@ -189,7 +199,7 @@ export function NewsHeatmap({ bizDate, window, onSectorClick, selectedSector }: 
               </div>
             ))}
 
-            {!loading && !hotSectors.length && (
+            {!loading && !error && !hotSectors.length && (
               <div className="px-3 py-4 text-xs text-slate-500 text-center">该周期暂无排行榜快照</div>
             )}
           </div>

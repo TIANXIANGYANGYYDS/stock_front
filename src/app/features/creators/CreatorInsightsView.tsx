@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import {
-  Database,
-  ListChecks,
+  Award,
+  ChevronLeft,
+  ChevronRight,
+  ListFilter,
+  PanelLeft,
   RotateCcw,
   Search,
-  Timer,
-  UsersRound,
+  X,
 } from 'lucide-react';
+import { useWorkspaceState } from '../../hooks/useWorkspaceState';
 import {
   getCreatorAccounts,
   getCreatorOpinionAnalyses,
@@ -21,6 +24,7 @@ import {
 } from '../../lib/api';
 import { CreatorRankingPanel } from './CreatorRankingPanel';
 import { CreatorWorkDetailPanel } from './CreatorWorkDetail';
+import { AnimatedDisclosure, SelectionGroup, SelectionIndicator } from '../../components/StudioMotion';
 import { CreatorWorkStream } from './CreatorWorkStream';
 import {
   appendUniqueWorks,
@@ -69,27 +73,31 @@ export function CreatorInsightsView() {
   const [worksError, setWorksError] = useState<string | null>(null);
   const [worksReload, setWorksReload] = useState(0);
 
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [platform, setPlatform] = useState('');
-  const [timeWindow, setTimeWindow] = useState<CreatorTimeWindow>('all');
-  const [direction, setDirection] = useState<CreatorDirectionFilter>('all');
-  const [selectedCreatorId, setSelectedCreatorId] = useState('');
+  const [search, setSearch] = useWorkspaceState('creators.search', '');
+  const [debouncedSearch, setDebouncedSearch] = useState(search.trim());
+  const [platform, setPlatform] = useWorkspaceState('creators.platform', '');
+  const [timeWindow, setTimeWindow] = useWorkspaceState<CreatorTimeWindow>('creators.window', 'all');
+  const [direction, setDirection] = useWorkspaceState<CreatorDirectionFilter>('creators.direction', 'all');
+  const [selectedCreatorId, setSelectedCreatorId] = useWorkspaceState('creators.selected', '');
   const [selectedWorkKey, setSelectedWorkKey] = useState('');
-  const [mobileSection, setMobileSection] = useState<'ranking' | 'works'>('works');
+  const [directoryTab, setDirectoryTab] = useState<'ranking' | 'works'>('works');
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [detail, setDetail] = useState<CreatorWorkDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailReload, setDetailReload] = useState(0);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [inlineDetail, setInlineDetail] = useState(() => (
+  const [directoryOpen, setDirectoryOpen] = useState(false);
+  const [inlineDirectory, setInlineDirectory] = useState(() => (
     typeof window.matchMedia !== 'function'
-      || window.matchMedia('(min-width: 1281px)').matches
+      || window.matchMedia('(min-width: 960px)').matches
   ));
   const detailCache = useRef(new Map<string, CreatorWorkDetail>());
   const worksRequestGeneration = useRef(0);
-  const detailTrigger = useRef<HTMLElement | null>(null);
+  const directoryTrigger = useRef<HTMLElement | null>(null);
+  const readingRef = useRef<HTMLDivElement>(null);
+  const focusReadingOnClose = useRef(false);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 180);
@@ -98,8 +106,11 @@ export function CreatorInsightsView() {
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return undefined;
-    const query = window.matchMedia('(min-width: 1281px)');
-    const updateLayout = () => setInlineDetail(query.matches);
+    const query = window.matchMedia('(min-width: 960px)');
+    const updateLayout = () => {
+      setInlineDirectory(query.matches);
+      if (query.matches) setDirectoryOpen(false);
+    };
     updateLayout();
     query.addEventListener?.('change', updateLayout);
     return () => query.removeEventListener?.('change', updateLayout);
@@ -211,6 +222,7 @@ export function CreatorInsightsView() {
   );
 
   useEffect(() => {
+    if (worksLoading) return;
     if (visibleWorks.length === 0) {
       setSelectedWorkKey('');
       setDetail(null);
@@ -218,9 +230,8 @@ export function CreatorInsightsView() {
     }
     if (!visibleWorks.some((work) => work.workKey === selectedWorkKey)) {
       setSelectedWorkKey(visibleWorks[0].workKey);
-      setDetailOpen(inlineDetail);
     }
-  }, [inlineDetail, selectedWorkKey, visibleWorks]);
+  }, [selectedWorkKey, visibleWorks, worksLoading]);
 
   useEffect(() => {
     if (!selectedWorkKey) {
@@ -237,6 +248,7 @@ export function CreatorInsightsView() {
       return;
     }
     let cancelled = false;
+    setDetail(null);
     setDetailLoading(true);
     setDetailError(null);
     void getCreatorWorkDetail(selectedWorkKey)
@@ -260,7 +272,7 @@ export function CreatorInsightsView() {
 
   const selectedSummary = works.find((item) => item.workKey === selectedWorkKey);
   const selectedAnalysis = analyses.find(
-    (item) => item.creatorId === (detail?.creatorId || selectedSummary?.creatorId),
+    (item) => item.creatorId === (selectedSummary?.creatorId || detail?.creatorId),
   ) ?? null;
   const scoredCreatorCount = analyses.filter((item) => item.accuracyScore !== null).length;
   const pendingOpinionCount = analyses.reduce(
@@ -269,19 +281,29 @@ export function CreatorInsightsView() {
   );
   const platforms = [...new Set(accounts.map((item) => item.platform).filter(Boolean))].sort();
   const hasMore = works.length < worksTotal;
+  const selectedIndex = visibleWorks.findIndex((work) => work.workKey === selectedWorkKey);
+  const selectedCreatorName = accounts.find((item) => item.creatorId === selectedCreatorId)?.displayName
+    || analyses.find((item) => item.creatorId === selectedCreatorId)?.creatorName
+    || selectedCreatorId;
+  const extraFilterCount = Number(Boolean(platform)) + Number(direction !== 'all') + Number(timeWindow !== 'all');
 
   const handleCreatorSelect = (creatorId: string) => {
     setSelectedCreatorId((current) => current === creatorId ? '' : creatorId);
     setSelectedWorkKey('');
-    setMobileSection('works');
+    setDirectoryTab('works');
   };
 
   const handleWorkSelect = (workKey: string) => {
-    detailTrigger.current = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
     setSelectedWorkKey(workKey);
-    setDetailOpen(true);
+    focusReadingOnClose.current = true;
+    setDirectoryOpen(false);
+  };
+
+  const openDirectory = (tab: 'ranking' | 'works') => {
+    directoryTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    focusReadingOnClose.current = false;
+    setDirectoryTab(tab);
+    setDirectoryOpen(true);
   };
 
   const handleLoadMore = async () => {
@@ -289,6 +311,7 @@ export function CreatorInsightsView() {
     const nextPage = page + 1;
     const requestGeneration = worksRequestGeneration.current;
     setWorksLoadingMore(true);
+    setWorksError(null);
     try {
       const response = await getCreatorWorks(currentWorkFilters(nextPage));
       if (requestGeneration !== worksRequestGeneration.current) return;
@@ -314,100 +337,20 @@ export function CreatorInsightsView() {
     setSelectedCreatorId('');
   };
 
-  const detailPanel = (
-    <CreatorWorkDetailPanel
-      work={detail}
-      creatorAnalysis={selectedAnalysis}
-      loading={detailLoading}
-      error={detailError}
-      onRetry={() => {
-        if (selectedWorkKey) detailCache.current.delete(selectedWorkKey);
-        setDetailReload((value) => value + 1);
-      }}
-      onClose={() => setDetailOpen(false)}
-    />
-  );
-
-  return (
-    <main className="creator-insights-view">
-      <section className="creator-overview-grid" aria-label="博主观点概览">
-        <div className="terminal-panel creator-overview-card">
-          <UsersRound size={15} /><span>监控博主</span><b>{accountsLoading ? '--' : accounts.length}</b>
-        </div>
-        <div className="terminal-panel creator-overview-card">
-          <Database size={15} /><span>A股相关作品</span><b>{allWorksTotal ?? worksTotal}</b>
-        </div>
-        <div className="terminal-panel creator-overview-card">
-          <ListChecks size={15} /><span>已评分博主</span><b>{rankingLoading ? '--' : scoredCreatorCount}</b>
-        </div>
-        <div className="terminal-panel creator-overview-card">
-          <Timer size={15} /><span>等待验证观点</span><b>{rankingLoading ? '--' : pendingOpinionCount}</b>
-        </div>
-      </section>
-
-      <section className="creator-filter-bar terminal-panel">
-        <label className="creator-search">
-          <Search size={14} />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="搜索作品、观点或标的"
-          />
-        </label>
-        <div className="creator-filter-buttons" aria-label="发布时间">
-          {TIME_WINDOWS.map((option) => (
-            <button
-              type="button"
-              key={option.value}
-              className={timeWindow === option.value ? 'is-active' : ''}
-              onClick={() => setTimeWindow(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-        <label className="creator-platform-select">
-          <span>平台</span>
-          <select value={platform} onChange={(event) => setPlatform(event.target.value)}>
-            <option value="">全部平台</option>
-            {platforms.map((item) => <option key={item} value={item}>{item.toUpperCase()}</option>)}
-          </select>
-        </label>
-        <div className="creator-filter-buttons" aria-label="观点方向">
-          {DIRECTIONS.map((option) => (
-            <button
-              type="button"
-              key={option.value}
-              className={direction === option.value ? 'is-active' : ''}
-              onClick={() => setDirection(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-        <button type="button" className="creator-clear-filters" onClick={clearFilters}>
-          <RotateCcw size={12} />清除筛选
+  const directory = (
+    <div className="creator-directory">
+      <SelectionGroup><div className="creator-directory-tabs" aria-label="浏览目录">
+        <button type="button" aria-pressed={directoryTab === 'works'} onClick={() => setDirectoryTab('works')}>
+          <PanelLeft size={14} />观点目录
+          <SelectionIndicator active={directoryTab === 'works'} />
         </button>
-      </section>
-
-      <div className="creator-mobile-switch" aria-label="博主观点页面区域">
-        <button
-          type="button"
-          className={mobileSection === 'ranking' ? 'is-active' : ''}
-          onClick={() => setMobileSection('ranking')}
-        >
-          评分排行
+        <button type="button" aria-pressed={directoryTab === 'ranking'} onClick={() => setDirectoryTab('ranking')}>
+          <Award size={14} />博主排行
+          <SelectionIndicator active={directoryTab === 'ranking'} />
         </button>
-        <button
-          type="button"
-          className={mobileSection === 'works' ? 'is-active' : ''}
-          onClick={() => setMobileSection('works')}
-        >
-          最新观点
-        </button>
-      </div>
-
-      <div className={'creator-workspace-grid mobile-' + mobileSection + (detailOpen ? ' has-open-detail' : '')}>
+        {!inlineDirectory && <button type="button" className="creator-directory-close" aria-label="关闭目录" onClick={() => setDirectoryOpen(false)}><X size={16} /></button>}
+      </div></SelectionGroup>
+      {directoryTab === 'ranking' ? (
         <CreatorRankingPanel
           items={rankingItems}
           accounts={accounts}
@@ -417,6 +360,7 @@ export function CreatorInsightsView() {
           onSelect={handleCreatorSelect}
           onRetry={() => setRankingReload((value) => value + 1)}
         />
+      ) : (
         <CreatorWorkStream
           items={visibleWorks}
           selectedWorkKey={selectedWorkKey}
@@ -431,30 +375,130 @@ export function CreatorInsightsView() {
           onClearFilters={clearFilters}
           onRetry={() => setWorksReload((value) => value + 1)}
         />
-        {inlineDetail ? (
-          <div className="creator-detail-shell is-open">{detailPanel}</div>
-        ) : (
-          <DialogPrimitive.Root open={detailOpen} onOpenChange={setDetailOpen}>
+      )}
+    </div>
+  );
+
+  return (
+    <main className="creator-insights-view creator-research-view">
+      <h1 className="sr-only">博主观点</h1>
+
+      <section className="creator-filter-bar terminal-panel">
+        <label className="creator-search">
+          <Search size={14} />
+          <input
+            ref={searchRef}
+            aria-label="搜索博主观点"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="搜索作品、观点或标的"
+            onKeyDown={(event) => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) setSearch(''); }}
+          />
+          {search && <button type="button" className="search-clear" aria-label="清除观点搜索" onClick={() => { setSearch(''); searchRef.current?.focus(); }}><X size={14} /></button>}
+        </label>
+        <SelectionGroup><div className="creator-filter-buttons" aria-label="发布时间">
+          {TIME_WINDOWS.map((option) => (
+            <button
+              type="button"
+              key={option.value}
+              className={timeWindow === option.value ? 'is-active' : ''}
+              aria-pressed={timeWindow === option.value}
+              onClick={() => setTimeWindow(option.value)}
+            >
+              {option.label}
+              <SelectionIndicator active={timeWindow === option.value} />
+            </button>
+          ))}
+        </div></SelectionGroup>
+        <button type="button" className="creator-filter-toggle" aria-expanded={filtersOpen} aria-controls="creator-extra-filters" onClick={() => setFiltersOpen((value) => !value)}>
+          <ListFilter size={14} />筛选{extraFilterCount > 0 && <b>{extraFilterCount}</b>}
+        </button>
+        {selectedCreatorId && <button type="button" className="creator-selected-filter" onClick={() => setSelectedCreatorId('')} aria-label={'取消博主筛选：' + selectedCreatorName}>{selectedCreatorName}<X size={12} /></button>}
+        {!inlineDirectory && <div className="creator-compact-navigation">
+          <button type="button" onClick={() => openDirectory('works')}><PanelLeft size={14} />切换作品</button>
+          <button type="button" onClick={() => openDirectory('ranking')}><Award size={14} />博主排行</button>
+        </div>}
+        <AnimatedDisclosure open={filtersOpen} id="creator-extra-filters" className="creator-filter-disclosure">
+        <div className="creator-extra-filters">
+        <label className="creator-platform-select">
+          <span>平台</span>
+          <select value={platform} onChange={(event) => setPlatform(event.target.value)}>
+            <option value="">全部平台</option>
+            {platforms.map((item) => <option key={item} value={item}>{item.toUpperCase()}</option>)}
+          </select>
+        </label>
+        <SelectionGroup><div className="creator-filter-buttons" aria-label="观点方向">
+          {DIRECTIONS.map((option) => (
+            <button
+              type="button"
+              key={option.value}
+              className={direction === option.value ? 'is-active' : ''}
+              aria-pressed={direction === option.value}
+              onClick={() => setDirection(option.value)}
+            >
+              {option.label}
+              <SelectionIndicator active={direction === option.value} />
+            </button>
+          ))}
+        </div></SelectionGroup>
+        <button type="button" className="creator-clear-filters" onClick={clearFilters}>
+          <RotateCcw size={12} />清除筛选
+        </button>
+        </div>
+        </AnimatedDisclosure>
+        <div className="creator-research-stats" aria-label="博主观点概览">
+          <span>监控博主 <b>{accountsLoading ? '--' : accounts.length}</b></span>
+          <span>A股相关作品 <b>{allWorksTotal ?? worksTotal}</b></span>
+          <span>已评分博主 <b>{rankingLoading ? '--' : scoredCreatorCount}</b></span>
+          <span>等待验证观点 <b>{rankingLoading ? '--' : pendingOpinionCount}</b></span>
+        </div>
+      </section>
+
+      <div className="creator-research-layout">
+        {inlineDirectory ? directory : (
+          <DialogPrimitive.Root open={directoryOpen} onOpenChange={setDirectoryOpen}>
             <DialogPrimitive.Portal>
-              <DialogPrimitive.Overlay className="creator-detail-overlay" />
-              <DialogPrimitive.Content
-                className="creator-detail-shell is-open"
-                onCloseAutoFocus={(event) => {
-                  event.preventDefault();
-                  detailTrigger.current?.focus();
-                }}
-              >
-                <DialogPrimitive.Title className="sr-only">
-                  作品与观点详情
-                </DialogPrimitive.Title>
-                <DialogPrimitive.Description className="sr-only">
-                  查看所选博主作品的观点分析、验证结果与原始内容
-                </DialogPrimitive.Description>
-                {detailPanel}
+              <DialogPrimitive.Overlay className="creator-navigation-overlay" />
+              <DialogPrimitive.Content className="creator-navigation-drawer" onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                if (focusReadingOnClose.current) readingRef.current?.focus();
+                else directoryTrigger.current?.focus();
+              }}>
+                <DialogPrimitive.Title className="sr-only">博主观点目录</DialogPrimitive.Title>
+                <DialogPrimitive.Description className="sr-only">选择作品阅读分析，或按博主排行筛选作品</DialogPrimitive.Description>
+                {directory}
               </DialogPrimitive.Content>
             </DialogPrimitive.Portal>
           </DialogPrimitive.Root>
         )}
+        <div ref={readingRef} className="creator-reading-main" role="region" tabIndex={-1} aria-label="当前作品分析">
+        {!worksLoading && ((worksError && works.length === 0) || visibleWorks.length === 0) ? (
+          <section className="terminal-panel creator-reading-empty">
+            <h2>{worksError ? '作品加载失败' : '当前筛选条件下暂无博主观点'}</h2>
+            {worksError && <p>{worksError}</p>}
+            <button type="button" onClick={worksError ? () => setWorksReload((value) => value + 1) : clearFilters}>{worksError ? '重新加载作品' : '清除筛选'}</button>
+            {hasMore && <button type="button" disabled={worksLoadingMore} onClick={() => void handleLoadMore()}>{worksLoadingMore ? '正在加载...' : '加载更多作品'}</button>}
+          </section>
+        ) : (
+          <CreatorWorkDetailPanel
+            work={detail}
+            creatorAnalysis={selectedAnalysis}
+            loading={worksLoading || detailLoading}
+            error={detailError}
+            onRetry={() => {
+              if (selectedWorkKey) detailCache.current.delete(selectedWorkKey);
+              setDetailReload((value) => value + 1);
+            }}
+            onClose={() => undefined}
+            showCloseButton={false}
+            navigation={<div className="creator-reading-navigation">
+              <span>当前目录 {selectedIndex < 0 ? 0 : selectedIndex + 1} / {visibleWorks.length}</span>
+              <button type="button" aria-label="上一篇分析" disabled={worksLoading || selectedIndex <= 0} onClick={() => handleWorkSelect(visibleWorks[selectedIndex - 1].workKey)}><ChevronLeft size={16} /></button>
+              <button type="button" aria-label="下一篇分析" disabled={worksLoading || selectedIndex < 0 || selectedIndex >= visibleWorks.length - 1} onClick={() => handleWorkSelect(visibleWorks[selectedIndex + 1].workKey)}><ChevronRight size={16} /></button>
+            </div>}
+          />
+        )}
+        </div>
       </div>
     </main>
   );

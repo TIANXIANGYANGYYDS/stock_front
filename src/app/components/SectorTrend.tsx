@@ -45,6 +45,7 @@ export function SectorTrend({ bizDate, window, onSectorClick, selectedSector }: 
   const [data, setData] = useState<SectorTrendResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,7 +75,7 @@ export function SectorTrend({ bizDate, window, onSectorClick, selectedSector }: 
     return () => {
       cancelled = true;
     };
-  }, [bizDate, window]);
+  }, [bizDate, window, reload]);
 
   const topSectors = data?.items ?? [];
   const baseSeries = data?.series ?? [];
@@ -90,13 +91,13 @@ export function SectorTrend({ bizDate, window, onSectorClick, selectedSector }: 
   return (
     <div className="bg-slate-900/50 backdrop-blur-xl rounded-2xl border border-slate-800/50 overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-800/50">
-        <h3 className="text-sm text-white">市场版块投资倾向</h3>
+        <h3 className="text-sm text-white">市场板块投资倾向</h3>
         <p className="text-xs text-slate-500 mt-1">Stock_Project 投资倾向快照 · {bizDate}</p>
       </div>
 
       <div className="p-5">
         {loading && <div className="text-xs text-slate-400 mb-3">趋势加载中...</div>}
-        {!loading && error && <div className="text-xs text-red-400 mb-3">{error}</div>}
+        {!loading && error && <div className="text-xs text-red-400 mb-3 flex items-center gap-3" role="alert"><span>{error}</span><button type="button" className="terminal-button" onClick={() => setReload((value) => value + 1)}>重试</button></div>}
 
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={displayChartData}>
@@ -140,6 +141,15 @@ export function SectorTrend({ bizDate, window, onSectorClick, selectedSector }: 
             {topSectors.map((sector) => (
               <div
                 key={`${sector.rank}-${sector.name}`}
+                role="button"
+                tabIndex={0}
+                aria-pressed={selectedSector === sector.name}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSectorClick(selectedSector === sector.name ? null : sector.name);
+                  }
+                }}
                 className={`grid grid-cols-5 gap-px cursor-pointer transition-colors ${
                   selectedSector === sector.name ? 'bg-blue-500/20' : 'bg-slate-800/20 hover:bg-slate-800/40'
                 }`}
@@ -165,7 +175,7 @@ export function SectorTrend({ bizDate, window, onSectorClick, selectedSector }: 
               </div>
             ))}
 
-            {!loading && !topSectors.length && (
+            {!loading && !error && !topSectors.length && (
               <div className="px-3 py-4 text-xs text-slate-500 text-center">该周期暂无排行榜快照</div>
             )}
           </div>

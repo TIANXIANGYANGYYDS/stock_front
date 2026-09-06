@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { useAppearance } from '../../hooks/useAppearance';
+import { chartAppearance } from './chart-appearance';
 import {
   CandlestickSeries,
   ColorType,
@@ -48,6 +50,7 @@ export function IntradayCandlestickChart({
   stockCode,
   tradingDate,
 }: IntradayCandlestickChartProps) {
+  const { appearance } = useAppearance();
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -122,6 +125,7 @@ export function IntradayCandlestickChart({
       },
     });
     chartRef.current = chart;
+    chart.applyOptions(chartAppearance(appearance));
     candleSeriesRef.current = chart.addSeries(CandlestickSeries, {
       upColor: RISE_COLOR,
       downColor: FALL_COLOR,
@@ -148,6 +152,8 @@ export function IntradayCandlestickChart({
       chart.remove();
     };
   }, []);
+
+  useEffect(() => { chartRef.current?.applyOptions(chartAppearance(appearance)); }, [appearance]);
 
   useEffect(() => {
     candleSeriesRef.current?.setData(bars.map((bar) => ({

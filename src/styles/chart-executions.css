@@ -1,0 +1,21 @@
+.chart-executions { flex: 0 0 auto; min-width: 0; padding: 8px 14px; border-bottom: 1px solid var(--terminal-border); font-size: 11px; color: var(--terminal-muted); }
+.chart-execution-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.chart-execution-controls label { display: inline-flex; align-items: center; gap: 5px; }
+.chart-executions button, .chart-executions select, .chart-executions input[type="date"] { min-height: 30px; border: 1px solid var(--terminal-border); border-radius: 6px; padding: 3px 7px; background: var(--terminal-panel); color: var(--terminal-text-soft); font: inherit; }
+.chart-executions input[type="checkbox"] { accent-color: var(--terminal-accent); }
+.chart-executions button, .chart-executions summary { cursor: pointer; }
+.chart-executions button:disabled { opacity: .5; cursor: not-allowed; }
+.chart-execution-range { min-width: 0; }
+.chart-execution-range[open] { flex-basis: 100%; }
+.chart-execution-range summary { padding: 6px 0; color: var(--terminal-accent); }
+.chart-execution-range form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 5px 0; }
+.chart-execution-status { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 10px; line-height: 1.6; }
+.chart-execution-status [role="alert"] { color: var(--terminal-rise); }
+.chart-execution-status > span:last-child { color: var(--terminal-muted); }
+.chart-execution-status .is-warning, .chart-execution-record .is-warning { color: var(--terminal-warning); }
+.chart-execution-history { padding-bottom: 12px; font-size: 11px; color: var(--terminal-muted); }
+.chart-execution-history p, .chart-execution-record p { line-height: 1.7; overflow-wrap: anywhere; margin: 7px 0; }
+.chart-execution-record { padding: 16px 0; border-top: 1px solid var(--terminal-border); }
+.chart-execution-record > details { margin-top: 12px; color: var(--terminal-muted); font-size: 11px; }
+.chart-execution-dialog summary { cursor: pointer; color: var(--terminal-accent); }
+@media (max-width: 600px) { .chart-executions { padding: 8px 10px; } .chart-executions button, .chart-executions select { min-height: 36px; } }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useWorkspaceState } from '../../hooks/useWorkspaceState';
 import { MarketAnalysis } from '../../components/MarketAnalysis';
 import { NewsHeatmap } from '../../components/NewsHeatmap';
 import { SectorTrend } from '../../components/SectorTrend';
@@ -17,8 +17,8 @@ const RANKING_WINDOWS: Array<{ value: RankingWindow; label: string }> = [
 ];
 
 export function MarketInsightsView({ marketTradeDate, analysisDate }: MarketInsightsViewProps) {
-  const [selectedSector, setSelectedSector] = useState<string | null>(null);
-  const [rankingWindow, setRankingWindow] = useState<RankingWindow>('day');
+  const [selectedSector, setSelectedSector] = useWorkspaceState<string | null>('market.sector', null);
+  const [rankingWindow, setRankingWindow] = useWorkspaceState<RankingWindow>('market.window', 'day');
 
   const handleSectorClick = (sector: string | null) => {
     setSelectedSector(sector);
@@ -39,7 +39,8 @@ export function MarketInsightsView({ marketTradeDate, analysisDate }: MarketInsi
               type="button"
               key={item.value}
               className={rankingWindow === item.value ? 'is-active' : ''}
-              onClick={() => setRankingWindow(item.value)}
+              aria-pressed={rankingWindow === item.value}
+              onClick={() => { setRankingWindow(item.value); setSelectedSector(null); }}
             >
               {item.label}
             </button>
@@ -47,6 +48,12 @@ export function MarketInsightsView({ marketTradeDate, analysisDate }: MarketInsi
         </div>
       </div>
 
+      {selectedSector && (
+        <div className="terminal-panel market-sector-selection">
+          <span>当前关注板块：<strong>{selectedSector}</strong></span>
+          <button type="button" className="terminal-button" onClick={() => setSelectedSector(null)}>显示全部板块</button>
+        </div>
+      )}
       <div className="market-insights-grid">
         <div className="legacy-panel-skin"><SectorTrend bizDate={marketTradeDate} window={rankingWindow} onSectorClick={handleSectorClick} selectedSector={selectedSector} /></div>
         <div className="legacy-panel-skin"><NewsHeatmap bizDate={marketTradeDate} window={rankingWindow} onSectorClick={handleSectorClick} selectedSector={selectedSector} /></div>

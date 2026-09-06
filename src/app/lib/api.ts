@@ -7,12 +7,13 @@ const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ||
   DEFAULT_API_BASE_URL;
 
-type QueryValue = string | number | boolean | null | undefined;
+export type QueryValue = string | number | boolean | null | undefined;
 export type NewsWindowDays = 1 | 3 | 7;
 export type RankingWindow = 'hour' | 'day' | '3day' | '7day';
 
-interface RequestOptions {
+export interface RequestOptions {
   signal?: AbortSignal;
+  cache?: RequestCache;
 }
 
 export class ApiRequestError extends Error {
@@ -36,7 +37,7 @@ function buildQuery(params?: Record<string, QueryValue>): string {
   return query ? `?${query}` : '';
 }
 
-async function requestJson<T>(
+export async function requestJson<T>(
   path: string,
   params?: Record<string, QueryValue>,
   options: RequestOptions = {},
@@ -44,6 +45,7 @@ async function requestJson<T>(
   const response = await fetch(`${API_BASE_URL}${path}${buildQuery(params)}`, {
     headers: { Accept: 'application/json' },
     signal: options.signal,
+    ...(options.cache ? { cache: options.cache } : {}),
   });
 
   if (!response.ok) {
@@ -1453,12 +1455,12 @@ export function extractSectorCompanies(
   );
 }
 
-async function fetchNewsPage(params?: Record<string, QueryValue>): Promise<PagedResponse<RawStockProjectNews>> {
+async function fetchNewsPage(params?: Record<string, QueryValue>, options: RequestOptions = {}): Promise<PagedResponse<RawStockProjectNews>> {
   return requestJson<PagedResponse<RawStockProjectNews>>('/api/v1/news', {
     page: 1,
     page_size: NEWS_PAGE_SIZE,
     ...params,
-  });
+  }, options);
 }
 
 export async function getNews(params: {
@@ -1470,19 +1472,32 @@ export async function getNews(params: {
   sentiment?: Sentiment | null;
   sort?: string;
   page?: number;
-  pageSize?: number;
+  pageSize?: number | 'all';
   days?: number;
-}): Promise<NewsResponse> {
+}, options: RequestOptions = {}): Promise<NewsResponse> {
   const tradeDateRange = tradeDateUnixRange(params.tradeDate, params.windowDays ?? 1);
   if (!tradeDateRange) throw new Error(`无效交易日: ${params.tradeDate}`);
-  const raw = await fetchNewsPage({
+  const query = {
     source: params.source,
     sector_name: params.sector,
     keyword: params.search,
     start_ts: tradeDateRange.startTs,
     end_ts: tradeDateRange.endTs,
-  });
-  let items = (raw.items ?? []).map(mapStockProjectNews);
+  };
+  const raw = await fetchNewsPage(query, options);
+  const rawItems = [...(raw.items ?? [])];
+  const backendPageSize = Math.max(1, raw.page_size || NEWS_PAGE_SIZE);
+  const pageCount = Math.ceil((raw.total ?? rawItems.length) / backendPageSize);
+  // Filtering and sorting must cover the whole date window before UI pagination.
+  for (let backendPage = 2; backendPage <= pageCount; backendPage += 1) {
+    const next = await fetchNewsPage({ ...query, page: backendPage, page_size: backendPageSize }, options);
+    if (!next.items?.length) break;
+    rawItems.push(...next.items);
+  }
+  let items = Array.from(new Map(rawItems.map((item, index) => {
+    const mapped = mapStockProjectNews(item, index);
+    return [mapped.id, mapped] as const;
+  })).values());
 
   items = items.filter((item) => {
     const publishTs = item.publishTs ?? 0;
@@ -1495,12 +1510,14 @@ export async function getNews(params: {
     items.sort((a, b) => b.impact - a.impact);
   } else if (params.sort === 'impact_asc') {
     items.sort((a, b) => a.impact - b.impact);
+  } else if (params.sort === 'time_asc') {
+    items.sort((a, b) => (a.publishTs ?? 0) - (b.publishTs ?? 0));
   } else {
     items.sort((a, b) => (b.publishTs ?? 0) - (a.publishTs ?? 0));
   }
 
   const page = Math.max(1, params.page ?? 1);
-  const pageSize = Math.max(1, params.pageSize ?? 50);
+  const pageSize = params.pageSize === 'all' ? Math.max(1, items.length) : Math.max(1, params.pageSize ?? 50);
   const start = (page - 1) * pageSize;
   const pageItems = items.slice(start, start + pageSize);
 

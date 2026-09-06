@@ -28,6 +28,7 @@ const chartHarness = vi.hoisted(() => {
   }> = [];
   const charts: Array<{
     addSeries: ReturnType<typeof vi.fn>;
+    applyOptions: ReturnType<typeof vi.fn>;
     subscribeCrosshairMove: ReturnType<typeof vi.fn>;
   }> = [];
   const panes = Array.from({ length: 8 }, () => ({
@@ -35,6 +36,9 @@ const chartHarness = vi.hoisted(() => {
     setStretchFactor: vi.fn(),
   }));
   let crosshairMove: ((param: unknown) => void) | null = null;
+  let click: ((param: unknown) => void) | null = null;
+  const markers = { setMarkers: vi.fn(), detach: vi.fn() };
+  const volumeMarkers = { setMarkers: vi.fn(), detach: vi.fn() };
   let visibleRange = { from: 70, to: 100 };
   const timeScale = {
     getVisibleLogicalRange: vi.fn(() => visibleRange),
@@ -45,6 +49,7 @@ const chartHarness = vi.hoisted(() => {
   };
   const createChart = vi.fn(() => {
     const chart = {
+      applyOptions: vi.fn(),
       addSeries: vi.fn((definition: symbol) => {
         const api = {
           definition,
@@ -59,6 +64,8 @@ const chartHarness = vi.hoisted(() => {
       removeSeries,
       panes: vi.fn(() => panes),
       subscribeCrosshairMove: vi.fn((handler) => { crosshairMove = handler; }),
+      subscribeClick: vi.fn(handler => { click = handler; }),
+      unsubscribeClick: vi.fn(),
       unsubscribeCrosshairMove: vi.fn(),
       timeScale: vi.fn(() => timeScale),
       remove,
@@ -78,12 +85,18 @@ const chartHarness = vi.hoisted(() => {
     panes,
     series,
     getCrosshairMove: () => crosshairMove,
+    getClick: () => click,
+    markers,
+    volumeMarkers,
     getVisibleRange: () => visibleRange,
     setVisibleRange: (range: { from: number; to: number }) => { visibleRange = range; },
     reset: () => {
       charts.length = 0;
       series.length = 0;
       crosshairMove = null;
+      click = null;
+      markers.setMarkers.mockClear(); markers.detach.mockClear();
+      volumeMarkers.setMarkers.mockClear(); volumeMarkers.detach.mockClear();
       visibleRange = { from: 70, to: 100 };
       removeSeries.mockClear();
       panes.forEach((pane) => {
@@ -101,6 +114,7 @@ vi.mock('lightweight-charts', () => ({
   CandlestickSeries: chartHarness.candlestickSeries,
   ColorType: { Solid: 'Solid' },
   createChart: chartHarness.createChart,
+  createSeriesMarkers: vi.fn(series => series.definition === chartHarness.candlestickSeries ? chartHarness.markers : chartHarness.volumeMarkers),
   CrosshairMode: { Normal: 0 },
   HistogramSeries: chartHarness.histogramSeries,
   LineSeries: chartHarness.lineSeries,
@@ -108,6 +122,8 @@ vi.mock('lightweight-charts', () => ({
 }));
 
 import { ProfessionalCandlestickChart } from './ProfessionalCandlestickChart';
+import { AppearanceProvider, useAppearance } from '../../hooks/useAppearance';
+import { rangeItem, rangeJson, rangeResponse } from '../quant/execution-range-test-fixtures';
 
 const stock: SectorStock = {
   code: '600000',
@@ -229,14 +245,89 @@ const intradayResponse: StockIntradayResponse = {
 };
 
 afterEach(() => {
+  vi.useRealTimers(); vi.unstubAllGlobals();
   document.body.innerHTML = '';
+  localStorage.clear();
+  document.documentElement.removeAttribute('data-appearance');
+  document.documentElement.classList.remove('dark');
   chartHarness.createChart.mockClear();
   chartHarness.remove.mockClear();
   chartHarness.reset();
 });
 
 describe('ProfessionalCandlestickChart interactions', () => {
-  it('renders a real intraday aggregate as the temporary latest daily candle', async () => {
+  it('draws actual fill markers, opens all same-day details on marker click and clears them when disabled', async () => {
+    vi.useFakeTimers();
+    const query = { strategyId: 'strategy_1', code: stock.code, startDate: '2026-08-07', endDate: '2026-08-08' };
+    const items = [rangeItem({ code: stock.code, trade_date: query.startDate }), rangeItem({ code: stock.code, trade_date: query.startDate, event_id: 'buy-2', execution_price: null }),
+      rangeItem({ code: stock.code, trade_date: null, event_id: 'unlocated', execution_price: 0, execution_at: '2026-08-20T02:00:00Z' })];
+    vi.stubGlobal('fetch', vi.fn(async (path: string) => path.endsWith('/strategies')
+      ? rangeJson({ items: [{ id: 'strategy_1', name: '策略1', execution_kind: 'shadow_simulation' }], total: 1 })
+      : rangeJson(rangeResponse(items, 1, 200, 'history-a', query))));
+    const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host);
+    await act(async () => root.render(<ProfessionalCandlestickChart stock={stock} />));
+    await act(async () => vi.advanceTimersByTimeAsync(260));
+    expect(chartHarness.markers.setMarkers.mock.lastCall?.[0]).toMatchObject([{ time: query.startDate, position: 'belowBar', text: '买入 ×2' }]);
+    expect(chartHarness.volumeMarkers.setMarkers.mock.lastCall?.[0]).toMatchObject([{ time: query.startDate, position: 'aboveBar', shape: 'arrowDown', text: '买入 ×2' }]);
+    expect(host.querySelector('[aria-label="成交价签"]')).toBeNull();
+    await act(async () => chartHarness.getCrosshairMove()?.({ time: query.startDate, hoveredObjectId: `execution:${query.startDate}:buy` }));
+    expect(host.querySelector('[aria-label="成交价签"]')).toBeNull();
+    await act(async () => chartHarness.getClick()?.({ hoveredObjectId: `execution:${query.startDate}:buy`, time: query.startDate }));
+    expect(document.querySelectorAll('.chart-execution-record')).toHaveLength(2);
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('4.002001');
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('—');
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('2026-08-20 09:30:00');
+    await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('1 笔无法在当前日K定位'))!.click());
+    expect(document.querySelectorAll('.chart-execution-record')).toHaveLength(3);
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('已保留成交明细，未移动到其他日期');
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('原始成交价（元/股）0');
+    await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    const volumeToggle = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === '成交量')!;
+    await act(async () => volumeToggle.click());
+    expect(chartHarness.volumeMarkers.detach).toHaveBeenCalled();
+    expect(chartHarness.markers.setMarkers.mock.lastCall?.[0]).toHaveLength(1);
+    await act(async () => volumeToggle.click());
+    expect(chartHarness.volumeMarkers.setMarkers.mock.lastCall?.[0]).toHaveLength(1);
+    await act(async () => host.querySelector<HTMLInputElement>('.chart-executions input[type="checkbox"]')!.click());
+    expect(chartHarness.markers.setMarkers.mock.lastCall?.[0]).toEqual([]);
+    expect(chartHarness.volumeMarkers.setMarkers.mock.lastCall?.[0]).toEqual([]);
+    expect(host.querySelector('[aria-label="成交价签"]')).toBeNull();
+    await act(async () => root.unmount()); expect(chartHarness.markers.detach).toHaveBeenCalled();
+  });
+  it.each(['daily', 'intraday'] as const)('changes %s chart colors without replacing its data, viewport, or indicators', async (chartMode) => {
+    function ThemeControl() {
+      const { toggleAppearance } = useAppearance();
+      return <button aria-label="Change theme" onClick={() => toggleAppearance()}>Theme</button>;
+    }
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<AppearanceProvider>
+      <ThemeControl />
+      <ProfessionalCandlestickChart stock={navigationStock} chartMode={chartMode} intradayData={intradayResponse} realtimeData={realtimeResponse} intradayInterval="1m" />
+    </AppearanceProvider>));
+    const chart = chartHarness.charts[0];
+    const seriesCount = chartHarness.series.length;
+    const dataCalls = chartHarness.series.map((series) => series.setData.mock.calls.length);
+    chartHarness.setVisibleRange({ from: 5, to: 20 });
+    const paneCalls = chartHarness.panes.map((pane) => pane.setHeight.mock.calls.length);
+    const indicatorState = [...host.querySelectorAll('.chart-tools [aria-pressed]')].map((button) => button.getAttribute('aria-pressed'));
+    for (const background of ['#1c1e23', '#ffffff']) {
+      await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Change theme"]')!.click());
+      expect(chart.applyOptions).toHaveBeenLastCalledWith(expect.objectContaining({ layout: expect.objectContaining({ background: { type: 'Solid', color: background } }) }));
+      expect(chartHarness.createChart).toHaveBeenCalledTimes(1);
+      expect(chartHarness.remove).not.toHaveBeenCalled();
+      expect(chartHarness.getVisibleRange()).toEqual({ from: 5, to: 20 });
+      expect(chartHarness.series).toHaveLength(seriesCount);
+      expect(chartHarness.series.map((series) => series.setData.mock.calls.length)).toEqual(dataCalls);
+      expect(chartHarness.panes.map((pane) => pane.setHeight.mock.calls.length)).toEqual(paneCalls);
+      expect([...host.querySelectorAll('.chart-tools [aria-pressed]')].map((button) => button.getAttribute('aria-pressed'))).toEqual(indicatorState);
+    }
+    await act(async () => root.unmount());
+  });
+
+  it('renders a realtime-refreshed intraday aggregate as the temporary latest daily candle', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
@@ -258,9 +349,9 @@ describe('ProfessionalCandlestickChart interactions', () => {
       {
         time: '2026-08-10',
         open: 10.7,
-        high: 10.95,
+        high: 11.23,
         low: 10.68,
-        close: 10.92,
+        close: 11.23,
       },
     ]);
     expect(host.querySelector('.trade-date-chip')?.textContent).toContain('2026-08-10');
@@ -268,7 +359,7 @@ describe('ProfessionalCandlestickChart interactions', () => {
     expect(host.querySelector('.stock-live-state')?.textContent).toContain('盘中临时日 K');
     expect(host.querySelector('.ohlc-legend')?.textContent).toContain('2026-08-10');
     expect(host.querySelector('.ohlc-legend')?.textContent).toContain('开 10.70');
-    expect(host.querySelector('.ohlc-legend')?.textContent).toContain('收 10.92');
+    expect(host.querySelector('.ohlc-legend')?.textContent).toContain('收 11.23');
 
     await act(async () => root.unmount());
   });
@@ -667,6 +758,57 @@ describe('ProfessionalCandlestickChart interactions', () => {
     expect(price?.className).toBe('market-flat');
     expect(host.textContent).not.toContain('日线涨跌');
 
+    await act(async () => root.unmount());
+  });
+
+  it('updates daily prices without rebuilding panes, losing the hovered date or resetting indicator choices', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onActiveDateChange = vi.fn();
+    await act(async () => root.render(<ProfessionalCandlestickChart stock={navigationStock} onActiveDateChange={onActiveDateChange} />));
+    const ma = [...host.querySelectorAll('button')].find((button) => button.textContent === 'MA')!;
+    await act(async () => ma.click());
+    chartHarness.setVisibleRange({ from: 5, to: 20 });
+    await act(async () => chartHarness.getCrosshairMove()?.({ time: navigationStock.kline[8].date }));
+    const beforeSeriesCount = chartHarness.series.length;
+    const nextStock = { ...navigationStock, kline: navigationStock.kline.map((bar, index) => index === 39 ? { ...bar, close: 10.9 } : { ...bar }) };
+    await act(async () => root.render(<ProfessionalCandlestickChart stock={nextStock} onActiveDateChange={onActiveDateChange} />));
+    expect(chartHarness.createChart).toHaveBeenCalledTimes(1);
+    expect(chartHarness.series.length).toBe(beforeSeriesCount);
+    expect(chartHarness.removeSeries).not.toHaveBeenCalled();
+    expect(chartHarness.getVisibleRange()).toEqual({ from: 5, to: 20 });
+    expect(ma.getAttribute('aria-pressed')).toBe('false');
+    expect(host.querySelector('.ohlc-legend')?.textContent).toContain(navigationStock.kline[8].date);
+    expect(onActiveDateChange).toHaveBeenLastCalledWith(navigationStock.kline[8].date);
+    expect(chartHarness.series[0].setData.mock.lastCall?.[0].at(-1)).toMatchObject({ close: 10.9 });
+    await act(async () => root.unmount());
+  });
+
+  it('always resets to the latest window after native dragging or fitting the chart', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<ProfessionalCandlestickChart stock={navigationStock} />));
+    const reset = host.querySelector<HTMLButtonElement>('[aria-label="重置窗口"]')!;
+    chartHarness.setVisibleRange({ from: 4, to: 18 });
+    await act(async () => reset.click());
+    expect(chartHarness.getVisibleRange()).toEqual({ from: 0, to: 40.5 });
+    chartHarness.setVisibleRange({ from: 12, to: 24 });
+    await act(async () => reset.click());
+    expect(chartHarness.getVisibleRange()).toEqual({ from: 0, to: 40.5 });
+    await act(async () => root.unmount());
+  });
+
+  it('reports a rejected fullscreen request instead of leaving an unhandled error', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<ProfessionalCandlestickChart stock={stock} />));
+    const shell = host.querySelector<HTMLElement>('.chart-workspace')!;
+    shell.requestFullscreen = vi.fn().mockRejectedValue(new Error('denied'));
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="全屏图表"]')!.click());
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('未能进入全屏');
     await act(async () => root.unmount());
   });
 

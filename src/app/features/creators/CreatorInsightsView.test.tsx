@@ -204,6 +204,29 @@ function prepareSuccessfulInitialLoad(
 }
 
 describe('CreatorInsightsView', () => {
+  it('keeps the selected platform when filters are closed and reopened without refetching', async () => {
+    prepareSuccessfulInitialLoad([creatorWork('hero:work', 'hero', '筛选条件保留')]);
+    const host = await renderView();
+    const toggle = host.querySelector<HTMLButtonElement>('.creator-filter-toggle')!;
+    expect(host.querySelector('#creator-extra-filters')).toBeNull();
+    await act(async () => toggle.click());
+    const select = host.querySelector<HTMLSelectElement>('#creator-extra-filters select')!;
+    const platform = select.options[1].value;
+    await act(async () => {
+      select.value = platform;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    expect(apiMocks.getCreatorWorks).toHaveBeenLastCalledWith(expect.objectContaining({ platform }));
+    const requests = apiMocks.getCreatorWorks.mock.calls.length;
+    await act(async () => toggle.click());
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(host.querySelector('#creator-extra-filters')).toBeNull();
+    await act(async () => toggle.click());
+    expect(host.querySelector<HTMLSelectElement>('#creator-extra-filters select')?.value).toBe(platform);
+    expect(apiMocks.getCreatorWorks).toHaveBeenCalledTimes(requests);
+  });
+
   it('loads accounts, rankings, works, and the first work detail independently', async () => {
     const firstWork = creatorWork('hero:work', 'hero', '商业航天明日展望');
     prepareSuccessfulInitialLoad([firstWork], 847);
@@ -235,6 +258,7 @@ describe('CreatorInsightsView', () => {
 
     const host = await renderView();
 
+    await act(async () => clickButton(host, '博主排行'));
     expect(host.textContent).toContain('排行离线');
     expect(host.textContent).toContain('商业航天明日展望');
     expect(host.textContent).toContain('商业航天明日展望的 AI 摘要');
@@ -245,6 +269,7 @@ describe('CreatorInsightsView', () => {
     prepareSuccessfulInitialLoad([firstWork]);
     const host = await renderView();
 
+    await act(async () => clickButton(host, '博主排行'));
     await act(async () => clickButton(host, '数据新人'));
     await flush();
 
@@ -252,7 +277,7 @@ describe('CreatorInsightsView', () => {
       expect.objectContaining({ creatorId: 'new', page: 1 }),
     );
 
-    await act(async () => clickButton(host, '数据新人'));
+    await act(async () => (host.querySelector('[aria-label="取消博主筛选：数据新人"]') as HTMLButtonElement).click());
     await flush();
 
     expect(apiMocks.getCreatorWorks).toHaveBeenLastCalledWith(
@@ -323,6 +348,7 @@ describe('CreatorInsightsView', () => {
 
     const host = await renderView();
     await act(async () => clickButton(host, '加载更多'));
+    await act(async () => clickButton(host, '博主排行'));
     await act(async () => clickButton(host, '数据新人'));
     await flush();
 
@@ -376,10 +402,10 @@ describe('CreatorInsightsView', () => {
     expect(host.textContent).toContain('重试观点的 AI 摘要');
   });
 
-  it('keeps the responsive detail drawer closed until the user selects a work', async () => {
+  it('shows analysis immediately on narrow screens and opens a directory with correct focus restoration', async () => {
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
       matches: false,
-      media: '(min-width: 1281px)',
+      media: '(min-width: 960px)',
       onchange: null,
       addListener: vi.fn(),
       removeListener: vi.fn(),
@@ -388,16 +414,19 @@ describe('CreatorInsightsView', () => {
       dispatchEvent: vi.fn(),
     }));
     const firstWork = creatorWork('hero:work', 'hero', '窄屏观点');
-    prepareSuccessfulInitialLoad([firstWork]);
+    const secondWork = creatorWork('new:work', 'new', '下一篇窄屏观点');
+    prepareSuccessfulInitialLoad([firstWork, secondWork]);
     const host = await renderView();
-    const workButton = [...host.querySelectorAll('button')].find(
-      (item) => item.textContent?.includes('窄屏观点'),
+    const directoryButton = [...host.querySelectorAll('button')].find(
+      (item) => item.textContent === '切换作品',
     ) as HTMLButtonElement;
 
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.querySelector('.creator-ai-summary')?.textContent).toContain('窄屏观点的 AI 摘要');
+    expect(host.querySelector('.creator-work-card')).toBeNull();
 
-    workButton.focus();
-    await act(async () => workButton.click());
+    directoryButton.focus();
+    await act(async () => directoryButton.click());
     await flush();
     expect(document.querySelector('[role="dialog"]')).not.toBeNull();
 
@@ -406,6 +435,51 @@ describe('CreatorInsightsView', () => {
     });
     await flush();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    expect(document.activeElement).toBe(workButton);
+    expect(document.activeElement).toBe(directoryButton);
+
+    await act(async () => directoryButton.click());
+    await flush();
+    await act(async () => clickButton(document.querySelector('[role="dialog"]') as HTMLElement, '下一篇窄屏观点'));
+    await flush();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(host.querySelector('.creator-ai-summary')?.textContent).toContain('下一篇窄屏观点的 AI 摘要');
+    expect(document.activeElement).toBe(host.querySelector('.creator-reading-main'));
+  });
+
+  it('moves between analyses with bounded previous and next controls', async () => {
+    const firstWork = creatorWork('hero:work', 'hero', '第一篇分析');
+    const secondWork = creatorWork('new:work', 'new', '第二篇分析');
+    prepareSuccessfulInitialLoad([firstWork, secondWork]);
+    const host = await renderView();
+    const previous = host.querySelector<HTMLButtonElement>('[aria-label="上一篇分析"]')!;
+    const next = host.querySelector<HTMLButtonElement>('[aria-label="下一篇分析"]')!;
+    expect(previous.disabled).toBe(true);
+    await act(async () => next.click());
+    await flush();
+    expect(host.querySelector('.creator-ai-summary')?.textContent).toContain('第二篇分析的 AI 摘要');
+    expect(next.disabled).toBe(true);
+    expect(previous.disabled).toBe(false);
+    await act(async () => previous.click());
+    await flush();
+    expect(host.querySelector('.creator-ai-summary')?.textContent).toContain('第一篇分析的 AI 摘要');
+    expect(apiMocks.getCreatorWorkDetail).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the analysis visible after loading more fails and clears the error on retry', async () => {
+    const firstWork = creatorWork('hero:work', 'hero', '已读分析');
+    prepareSuccessfulInitialLoad([firstWork], 30);
+    apiMocks.getCreatorWorks.mockReset()
+      .mockResolvedValueOnce({ items: [firstWork], total: 30, page: 1, pageSize: 24 })
+      .mockRejectedValueOnce(new Error('分页暂时离线'))
+      .mockResolvedValueOnce({ items: [firstWork], total: 1, page: 2, pageSize: 24 });
+    const host = await renderView();
+    await act(async () => clickButton(host, '加载更多'));
+    await flush();
+    expect(host.textContent).toContain('分页暂时离线');
+    expect(host.querySelector('.creator-ai-summary')?.textContent).toContain('已读分析的 AI 摘要');
+    await act(async () => clickButton(host, '加载更多'));
+    await flush();
+    expect(host.textContent).not.toContain('分页暂时离线');
+    expect(host.querySelector('.creator-ai-summary')?.textContent).toContain('已读分析的 AI 摘要');
   });
 });

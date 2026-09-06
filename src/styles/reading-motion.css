@@ -1,0 +1,65 @@
+/* Native snapshots preserve the live application underneath the theme reveal. */
+html[data-theme-transition] .studio-shell *,
+html[data-theme-transition] .studio-shell *::before,
+html[data-theme-transition] .studio-shell *::after { transition: none !important; }
+html[data-theme-transition]::view-transition { pointer-events: none; }
+html[data-theme-transition]::view-transition-group(root) { animation-duration: 420ms; }
+html[data-theme-transition]::view-transition-image-pair(root) { isolation: auto; }
+html[data-theme-transition]::view-transition-old(root),
+html[data-theme-transition]::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+html[data-theme-transition]::view-transition-new(root) { animation: studio-theme-reveal 420ms cubic-bezier(.22, .68, .24, 1) both; }
+@keyframes studio-theme-reveal {
+  from { clip-path: circle(0 at var(--theme-origin-x) var(--theme-origin-y)); }
+  to { clip-path: circle(var(--theme-radius) at var(--theme-origin-x) var(--theme-origin-y)); }
+}
+
+.studio-shell .studio-reading-progress, .news-detail .studio-reading-progress { display: none; }
+@supports (animation-timeline: scroll()) {
+  .news-detail { --reading-inset: 30px; }
+  .creator-analysis-report .creator-detail-scroll, .creator-analysis-report .creator-source-pane { --reading-inset: 26px; }
+  .news-detail .studio-reading-progress,
+  .creator-analysis-report .studio-reading-progress {
+    position: sticky; top: calc(-1 * var(--reading-inset)); z-index: 3; display: block; height: 3px; padding: 0;
+    margin: calc(-1 * var(--reading-inset)) calc(-1 * var(--reading-inset-x, var(--reading-inset))) calc(var(--reading-inset) - 3px);
+    border: 0; background: transparent; pointer-events: none;
+  }
+  .studio-reading-progress > span {
+    display: block; height: 100%; border-radius: 2px; background: var(--terminal-accent);
+    transform: scaleX(0); transform-origin: left;
+    animation: studio-reading-fill 1s linear both;
+    animation-timeline: scroll(nearest block);
+  }
+  @keyframes studio-reading-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @media (min-width: 960px) and (max-width: 1399px) {
+    .studio-shell .creator-analysis-report .creator-detail-scroll { --reading-inset: 20px; }
+  }
+  @media (max-width: 959px) {
+    .studio-shell .creator-analysis-report { overflow: clip; }
+    .creator-analysis-report .studio-reading-progress { top: 0; }
+    .creator-analysis-report .studio-reading-progress > span { animation-timeline: scroll(root block); }
+  }
+  @media (max-width: 600px) {
+    .creator-analysis-report .creator-detail-scroll, .creator-analysis-report .creator-source-pane { --reading-inset: 19px; }
+    .news-detail-dialog .news-detail { --reading-inset: 22px; --reading-inset-x: 20px; }
+  }
+}
+
+/* Native disclosures remain functional without intrinsic-size interpolation. */
+@supports (interpolate-size: allow-keywords) and selector(details::details-content) {
+  .creator-opinion-reference, .quant-quality details { interpolate-size: allow-keywords; }
+  .creator-opinion-reference::details-content, .quant-quality details::details-content {
+    block-size: 0; overflow: hidden; opacity: 0;
+    transition: block-size 220ms ease, opacity 180ms ease, content-visibility 220ms allow-discrete;
+  }
+  .creator-opinion-reference[open]::details-content, .quant-quality details[open]::details-content { block-size: auto; opacity: 1; }
+}
+.creator-analysis-report .creator-opinion-detail-card:focus { box-shadow: inset 2px 0 var(--terminal-accent); animation: studio-locate-opinion 1000ms ease-out; }
+@keyframes studio-locate-opinion { from { background-color: var(--terminal-accent-soft); } to { background-color: transparent; } }
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme-transition]::view-transition-group(root),
+  html[data-theme-transition]::view-transition-old(root),
+  html[data-theme-transition]::view-transition-new(root) { animation: none !important; }
+  .news-detail .studio-reading-progress, .creator-analysis-report .studio-reading-progress { display: none; }
+  .creator-opinion-reference::details-content, .quant-quality details::details-content { transition: none; }
+}

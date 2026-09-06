@@ -28,6 +28,53 @@ afterEach(() => {
 });
 
 describe('NewsIntelligenceView controls', () => {
+  it('paginates and sorts the complete loaded window without fetching it again', async () => {
+    vi.useFakeTimers();
+    apiMocks.getNews.mockResolvedValueOnce({
+      tradeDate: '2026-08-07',
+      items: Array.from({ length: 201 }, (_, index) => ({
+        id: String(index), title: `资讯${index}`, content: `正文${index}`, summary: '', source: '测试来源',
+        publishTs: 1000 - index, impact: index, sentiment: 'positive', keyPoints: [], relatedStocks: [],
+      })),
+      pagination: { page: 1, page_size: 201, total: 201, returned: 201 },
+    });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<NewsIntelligenceView tradeDate="2026-08-07" />));
+    await act(async () => vi.advanceTimersByTimeAsync(180));
+    const button = (label: string) => [...host.querySelectorAll('button')].find((item) => item.textContent?.trim() === label)!;
+    expect(host.querySelectorAll('.news-stream-item')).toHaveLength(100);
+    expect(host.textContent).toContain('共 201 条');
+    await act(async () => button('下一页').click());
+    expect(host.querySelector('.news-stream-item h3')?.textContent).toBe('资讯100');
+    await act(async () => button('按评分').click());
+    expect(host.querySelector('.news-pagination')?.textContent).toContain('1 / 3');
+    expect(host.querySelector('.news-stream-item h3')?.textContent).toBe('资讯200');
+    expect(apiMocks.getNews).toHaveBeenCalledTimes(1);
+    await act(async () => root.unmount());
+  });
+
+  it('recovers from a failed request and lets the user clear a filter with no matches', async () => {
+    vi.useFakeTimers();
+    apiMocks.getNews.mockRejectedValueOnce(new Error('网络异常'));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<NewsIntelligenceView tradeDate="2026-08-07" />));
+    await act(async () => vi.advanceTimersByTimeAsync(180));
+    const button = (label: string) => [...host.querySelectorAll('button')].find((item) => item.textContent?.trim() === label)!;
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('网络异常');
+    await act(async () => button('重试').click());
+    await act(async () => vi.advanceTimersByTimeAsync(180));
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    await act(async () => button('利好').click());
+    await act(async () => button('清除筛选').click());
+    expect(button('全部').getAttribute('aria-pressed')).toBe('true');
+    expect(apiMocks.getNews).toHaveBeenCalledTimes(2);
+    await act(async () => root.unmount());
+  });
+
   it('exposes independent date window, sort field, and sort direction controls', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -89,8 +136,8 @@ describe('NewsIntelligenceView controls', () => {
       search: '中际旭创',
       sentiment: null,
       page: 1,
-      pageSize: 100,
-    });
+      pageSize: 'all',
+    }, { signal: expect.any(AbortSignal) });
 
     await act(async () => root.unmount());
   });

@@ -212,6 +212,19 @@ describe('CreatorWorkStream', () => {
 });
 
 describe('CreatorWorkDetailPanel', () => {
+  it('keeps the reading tab when switching works and starts the next work at the top', async () => {
+    const props = { creatorAnalysis, loading: false, error: null, onRetry: vi.fn(), onClose: vi.fn(), showCloseButton: false };
+    const host = await render(<CreatorWorkDetailPanel {...props} work={workDetail} />);
+    expect(host.querySelector('[aria-label="关闭详情"]')).toBeNull();
+    await act(async () => button(host, '原始内容').click());
+    const pane = host.querySelector<HTMLElement>('.creator-source-pane')!;
+    pane.scrollTop = 300;
+    await act(async () => root?.render(<CreatorWorkDetailPanel {...props} work={{ ...workDetail, workKey: 'next-work', sourceText: '下一篇原文' }} />));
+    expect(button(host, '原始内容').getAttribute('aria-pressed')).toBe('true');
+    expect(host.querySelector('.creator-source-pane')?.textContent).toContain('下一篇原文');
+    expect(host.querySelector('.creator-source-pane')?.scrollTop).toBe(0);
+  });
+
   it('renders verified analysis and switches to the labeled original source', async () => {
     const host = await render(
       <CreatorWorkDetailPanel
@@ -261,11 +274,12 @@ describe('CreatorWorkDetailPanel', () => {
 
     expect(host.querySelector('.creator-ai-summary p')?.textContent).toBe('暂无 AI 摘要');
     expect(host.textContent).toContain('待识别状态 · backend_new_verdict');
-    expect(host.textContent).toContain('内容类型 post');
     expect(host.textContent).toContain('有效期 2026-08-09 16:00 至 2026-08-10 15:00');
     expect(button(host, '观点分析').getAttribute('aria-pressed')).toBe('true');
 
     await act(async () => button(host, '原始内容').click());
     expect(button(host, '原始内容').getAttribute('aria-pressed')).toBe('true');
+    expect(host.textContent).toContain('内容类型 图文');
+    expect(host.querySelector('.creator-source-pane h2')?.textContent).toBe(workDetail.title);
   });
 });

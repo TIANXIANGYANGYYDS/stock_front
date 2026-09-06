@@ -1,4 +1,5 @@
-import { Database, Search, Waves } from 'lucide-react';
+import { useRef } from 'react';
+import { Database, Search, Waves, X } from 'lucide-react';
 import type { StockListItem } from '../../lib/api';
 
 interface StockNavigatorProps {
@@ -12,6 +13,7 @@ interface StockNavigatorProps {
   realtimeError: string | null;
   onQueryChange: (query: string) => void;
   onSelect: (code: string) => void;
+  onRetry?: () => void;
 }
 
 function formatPrice(value: number | null): string {
@@ -34,7 +36,10 @@ export function StockNavigator({
   realtimeError,
   onQueryChange,
   onSelect,
+  onRetry,
 }: StockNavigatorProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const clearSearch = () => { onQueryChange(''); inputRef.current?.focus(); };
   return (
     <aside className="terminal-panel stock-navigator">
       <div className="panel-title-row">
@@ -50,11 +55,18 @@ export function StockNavigator({
       <label className="stock-search-field">
         <Search size={15} />
         <input
+          ref={inputRef}
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="输入股票代码或名称"
           aria-label="搜索股票"
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+            if (event.key === 'Escape') clearSearch();
+            if (event.key === 'Enter' && !loading && !error && items[0]) onSelect(items[0].code);
+          }}
         />
+        {query && <button type="button" className="search-clear" aria-label="清除股票搜索" onClick={clearSearch}><X size={14} /></button>}
       </label>
 
       <div className="stock-list-caption">
@@ -62,19 +74,24 @@ export function StockNavigator({
         <small>{loading ? '查询中' : `${items.length} 只`}</small>
       </div>
 
-      <div className="navigator-stock-list terminal-scroll">
+      <div className="navigator-stock-list terminal-scroll" aria-busy={loading}>
         {loading && items.length === 0 && (
           <div className="radar-placeholder"><span className="loading-pulse" />正在查询股票...</div>
         )}
-        {error && items.length > 0 && (
-          <div className="radar-placeholder is-error">查询失败，保留上次结果</div>
+        {!loading && error && (
+          <div className="radar-placeholder is-error workspace-recovery" role="alert">
+            <span>{items.length > 0 ? '查询失败，保留上次结果' : error}</span>
+            {onRetry && <button type="button" className="terminal-button" onClick={onRetry}>重试</button>}
+          </div>
         )}
         {realtimeError && items.length > 0 && (
           <div className="radar-placeholder is-error realtime-stock-warning">{realtimeError}</div>
         )}
-        {!loading && error && items.length === 0 && <div className="radar-placeholder is-error">{error}</div>}
         {!loading && !error && items.length === 0 && (
-          <div className="radar-placeholder">没有找到符合条件的股票</div>
+          <div className="radar-placeholder workspace-recovery">
+            <span>没有找到符合条件的股票</span>
+            {query && <button type="button" className="terminal-button" onClick={clearSearch}>清除搜索</button>}
+          </div>
         )}
         {items.map((stock) => {
           const realtimeMissing = missingCodes.includes(stock.code);
@@ -84,6 +101,7 @@ export function StockNavigator({
               key={stock.code}
               className={`navigator-stock-row${selectedCode === stock.code ? ' is-active' : ''}${realtimeMissing ? ' is-realtime-missing' : ''}`}
               onClick={() => onSelect(stock.code)}
+              aria-pressed={selectedCode === stock.code}
             >
               <span className="stock-name-code"><strong>{stock.name}</strong><small>{stock.code}</small></span>
               <span className="stock-list-price">

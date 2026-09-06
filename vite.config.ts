@@ -16,12 +16,15 @@ function figmaAssetResolver() {
   }
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const proxyTarget =
     process.env.VITE_API_PROXY_TARGET ||
-    env.VITE_API_PROXY_TARGET ||
-    'http://39.106.202.228:8100'
+    env.VITE_API_PROXY_TARGET
+
+  if (command === 'serve' && !proxyTarget) {
+    throw new Error('VITE_API_PROXY_TARGET is required for the development proxy')
+  }
 
   return {
     plugins: [
@@ -37,17 +40,21 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
+    optimizeDeps: {
+      include: ['three', 'three/addons/controls/OrbitControls.js'],
+    },
     server: {
       host: 'localhost',
       port: 5188,
       strictPort: true,
-      proxy: {
+      watch: { ignored: ['**/*.test.ts', '**/*.test.tsx'] },
+      proxy: proxyTarget ? {
         '/backend-api': {
           target: proxyTarget,
           changeOrigin: true,
           rewrite: (requestPath) => requestPath.replace(/^\/backend-api/, ''),
         },
-      },
+      } : undefined,
     },
     build: {
       emptyOutDir: true,

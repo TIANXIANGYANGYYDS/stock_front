@@ -53,7 +53,13 @@ describe('buildCurrentDayChartBars', () => {
     volume: 1_000, amount: 900_000,
   }];
 
-  it('aggregates real minute OHLC into one temporary current-day daily bar', () => {
+  it('uses the realtime close and converts current-day share volume to historical lots', () => {
+    const currentQuote: StockRealtimeQuote = {
+      ...realtimeQuote,
+      price: 925,
+      volume: 35_000,
+      amount: 32_000_000,
+    };
     const result = buildCurrentDayChartBars(
       dailyBars,
       [
@@ -62,7 +68,7 @@ describe('buildCurrentDayChartBars', () => {
         }),
         minuteBar('2026-08-12T09:30:00+08:00'),
       ],
-      realtimeQuote,
+      currentQuote,
       '2026-08-12',
     );
 
@@ -70,16 +76,91 @@ describe('buildCurrentDayChartBars', () => {
     expect(result[1]).toMatchObject({
       time: '2026-08-12',
       open: 905,
-      high: 920,
+      high: 925,
       low: 903,
-      close: 916,
-      volume: 300,
-      amount: 274_000,
+      close: 925,
+      volume: 350,
+      amount: 32_000_000,
     });
-    expect(result[1]?.changeAmount).toBeCloseTo(16, 8);
-    expect(result[1]?.changePercent).toBeCloseTo(1.7777777777777777, 8);
-    expect(result[1]?.ma).toBeUndefined();
-    expect(result[1]?.macd).toBeUndefined();
+    expect(result[1]?.changeAmount).toBeCloseTo(25, 8);
+    expect(result[1]?.changePercent).toBeCloseTo(2.7777777777777777, 8);
+  });
+
+  it('falls back to minute totals while keeping volume in lots when realtime totals are absent', () => {
+    const result = buildCurrentDayChartBars(
+      dailyBars,
+      [
+        minuteBar('2026-08-12T09:30:00+08:00', {
+          volume: 10_000,
+          amount: 9_100_000,
+        }),
+        minuteBar('2026-08-12T09:31:00+08:00', {
+          volume: 20_000,
+          amount: 18_300_000,
+        }),
+      ],
+      { ...realtimeQuote, price: null, volume: null, amount: null },
+      '2026-08-12',
+    );
+
+    expect(result.at(-1)).toMatchObject({
+      close: 910,
+      volume: 300,
+      amount: 27_400_000,
+    });
+  });
+
+  it('extends moving averages and MACD through the temporary current-day bar', () => {
+    const stableBars = Array.from({ length: 30 }, (_, index) => ({
+      date: `2026-07-${String(index + 1).padStart(2, '0')}`,
+      open: 10,
+      high: 10,
+      low: 10,
+      close: 10,
+      volume: 100,
+      amount: 100_000,
+      ma: { ma5: 10, ma10: 10, ma20: 10, ma30: 10, ma60: null },
+      volumeMa: { volMa5: 100, volMa10: 100, volMa20: 100, volMa60: null },
+      macd: { dif: 0, dea: 0, hist: 0 },
+    }));
+    const currentQuote: StockRealtimeQuote = {
+      ...realtimeQuote,
+      price: 12,
+      volume: 20_000,
+      amount: 240_000,
+    };
+    const currentMinute = minuteBar('2026-08-12T09:30:00+08:00', {
+      open: 11,
+      high: 12,
+      low: 11,
+      close: 11.5,
+      volume: 10_000,
+      amount: 115_000,
+    });
+
+    const result = buildCurrentDayChartBars(
+      stableBars,
+      [currentMinute],
+      currentQuote,
+      '2026-08-12',
+    );
+
+    expect(result.at(-1)?.ma).toEqual({
+      ma5: 10.4,
+      ma10: 10.2,
+      ma20: 10.1,
+      ma30: 10.066666666666666,
+      ma60: null,
+    });
+    expect(result.at(-1)?.volumeMa).toEqual({
+      volMa5: 120,
+      volMa10: 110,
+      volMa20: 105,
+      volMa60: null,
+    });
+    expect(result.at(-1)?.macd?.dif).toBeCloseTo(0.1595441595441596, 12);
+    expect(result.at(-1)?.macd?.dea).toBeCloseTo(0.03190883190883192, 12);
+    expect(result.at(-1)?.macd?.hist).toBeCloseTo(0.25527065527065535, 12);
   });
 
   it('does not fabricate a daily candle from only one realtime price', () => {

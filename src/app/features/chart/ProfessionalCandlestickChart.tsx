@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useAppearance } from '../../hooks/useAppearance';
+import { chartAppearance } from './chart-appearance';
 import {
   CandlestickSeries,
   ColorType,
   createChart,
+  createSeriesMarkers,
   CrosshairMode,
   HistogramSeries,
   LineSeries,
   LineStyle,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   type MouseEventParams,
   type Time,
 } from 'lightweight-charts';
@@ -16,12 +20,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Expand,
+  Minimize,
   Focus,
   Layers3,
   Minus,
   Plus,
   RotateCcw,
 } from 'lucide-react';
+import { useWorkspaceState } from '../../hooks/useWorkspaceState';
 import type {
   IntradayInterval,
   SectorStock,
@@ -51,6 +57,8 @@ import {
   type ChartNavigationAction,
 } from './chart-navigation';
 import { IntradayCandlestickChart } from './IntradayCandlestickChart';
+import { useChartExecutions } from './useChartExecutions';
+import { ChartExecutions } from './ChartExecutions';
 
 interface ProfessionalCandlestickChartProps {
   stock: SectorStock | null;
@@ -90,7 +98,6 @@ const MAIN_PANE_HEIGHT = 420;
 const AUXILIARY_PANE_HEIGHT = 150;
 const MAIN_PANE_STRETCH_FACTOR = MAIN_PANE_HEIGHT / AUXILIARY_PANE_HEIGHT;
 const DEFAULT_WINDOW_SIZE = 60;
-type ChartWindowSize = 10 | 20 | 30 | 60;
 const INTRADAY_INTERVALS: Array<{ value: IntradayInterval; label: string }> = [
   { value: '1m', label: '1分' },
   { value: '5m', label: '5分' },
@@ -186,13 +193,6 @@ function toneClass(tone: QuoteTone): string {
   return `market-${tone}`;
 }
 
-function sameIndicators(
-  left: AuxiliaryChartIndicator[],
-  right: AuxiliaryChartIndicator[],
-): boolean {
-  return left.length === right.length && left.every((item, index) => item === right[index]);
-}
-
 export function ProfessionalCandlestickChart({
   stock,
   stockCode = '',
@@ -212,13 +212,21 @@ export function ProfessionalCandlestickChart({
   onIntradayIntervalChange,
   onActiveDateChange,
 }: ProfessionalCandlestickChartProps) {
+  const { appearance } = useAppearance();
   const shellRef = useRef<HTMLDivElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartApiRef = useRef<IChartApi | null>(null);
+  const executionMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const volumeExecutionMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const movingAverageSeriesRef = useRef<Array<ISeriesApi<'Line'>>>([]);
   const bollSeriesRef = useRef<Array<ISeriesApi<'Line'>>>([]);
   const auxiliarySeriesRef = useRef<Partial<Record<AuxiliaryChartIndicator, ManagedSeries[]>>>({});
   const onActiveDateChangeRef = useRef(onActiveDateChange);
+  const barsRef = useRef<ChartBar[]>([]);
+  const chartDataRef = useRef<ChartBar[]>([]);
+  const hoveredDateRef = useRef<string | null>(null);
+  const updateMainDataRef = useRef<(data: ChartBar[]) => void>(() => undefined);
+  const updateAuxiliaryDataRef = useRef<Array<(data: ChartBar[]) => void>>([]);
   const selectedCode = stockCode || stock?.code || '';
   const dailyStock = !loading && stock?.code === selectedCode ? stock : null;
   const intradayBars = useMemo(
@@ -256,43 +264,55 @@ export function ProfessionalCandlestickChart({
     [currentDayIntradayBars, dailyStock, realtimeData?.tradingDate, selectedRealtime],
   );
   const availableMaKeys = useMemo(() => getAvailableMaKeys(bars), [bars]);
+  const executions = useChartExecutions(selectedCode, bars, chartMode === 'daily');
+  const executionClickRef = useRef(executions.openMarker);
+  executionClickRef.current = executions.openMarker;
   const availableIndicators = useMemo(() => getAvailableChartIndicators(bars), [bars]);
   const bollAvailable = useMemo(
     () => BOLL_CONFIG.some(({ key }) => buildIndicatorData(bars, 'boll', key).length > 0),
     [bars],
   );
   const [activeBar, setActiveBar] = useState<ChartBar | null>(() => bars.at(-1) ?? null);
-  const [windowSize, setWindowSize] = useState<ChartWindowSize | null>(DEFAULT_WINDOW_SIZE);
-  const [showMovingAverages, setShowMovingAverages] = useState(true);
-  const [showBoll, setShowBoll] = useState(false);
-  const [activeIndicators, setActiveIndicators] = useState<AuxiliaryChartIndicator[]>([
+  const [showMovingAverages, setShowMovingAverages] = useWorkspaceState('chart.ma', true);
+  const [showBoll, setShowBoll] = useWorkspaceState('chart.boll', false);
+  const [activeIndicators, setActiveIndicators] = useWorkspaceState<AuxiliaryChartIndicator[]>('chart.indicators', [
     'volume', 'macd',
   ]);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const hasDailyBars = bars.length > 0;
+  const indicatorKey = availableIndicators.join('|');
+  barsRef.current = bars;
 
   onActiveDateChangeRef.current = onActiveDateChange;
 
   useEffect(() => {
-    const latest = bars.at(-1) ?? null;
-    setActiveBar(latest);
-    setWindowSize(DEFAULT_WINDOW_SIZE);
+    hoveredDateRef.current = null;
     onActiveDateChangeRef.current?.(null);
-  }, [bars]);
+  }, [selectedCode, chartMode]);
 
   useEffect(() => {
-    setShowMovingAverages(availableMaKeys.length > 0);
-    setShowBoll(false);
-    setActiveIndicators((current) => {
-      const retained = current.filter((indicator) => availableIndicators.includes(indicator));
-      const defaults = (['volume', 'macd'] as AuxiliaryChartIndicator[])
-        .filter((indicator) => availableIndicators.includes(indicator));
-      const next = retained.length > 0
-        ? retained
-        : defaults.length > 0
-          ? defaults
-          : availableIndicators.slice(0, 1);
-      return sameIndicators(current, next) ? current : next;
-    });
-  }, [availableIndicators, availableMaKeys.length, dailyStock?.code]);
+    setActiveBar(bars.find((bar) => bar.time === hoveredDateRef.current) ?? bars.at(-1) ?? null);
+  }, [bars, selectedCode, chartMode]);
+
+  useEffect(() => {
+    const update = () => setFullscreen(document.fullscreenElement === shellRef.current);
+    document.addEventListener('fullscreenchange', update);
+    return () => document.removeEventListener('fullscreenchange', update);
+  }, []);
+
+  useEffect(() => {
+    const shell = shellRef.current;
+    const header = shell?.querySelector<HTMLElement>('.chart-fixed-header');
+    if (!shell || !header) return;
+    // Keep focused execution controls below the sticky quote header, including wrapped mobile layouts.
+    const update = () => { shell.style.scrollPaddingTop = `${header.offsetHeight + 8}px`; };
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    observer?.observe(header);
+    window.addEventListener('resize', update);
+    update();
+    return () => { observer?.disconnect(); window.removeEventListener('resize', update); };
+  }, []);
 
   useEffect(() => {
     const container = chartContainerRef.current;
@@ -354,6 +374,7 @@ export function ProfessionalCandlestickChart({
       },
     });
     chartApiRef.current = chart;
+    chart.applyOptions(chartAppearance(appearance));
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: RISE_COLOR,
@@ -365,16 +386,13 @@ export function ProfessionalCandlestickChart({
       lastValueVisible: true,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
     });
-    candleSeries.setData(bars.map((bar) => ({
-      time: bar.time as Time,
-      open: bar.open,
-      high: bar.high,
-      low: bar.low,
-      close: bar.close,
-    })));
-
+    const executionMarkers = createSeriesMarkers(candleSeries, []);
+    executionMarkersRef.current = executionMarkers;
+    const handleExecutionClick = (param: MouseEventParams<Time>) => {
+      if (param.hoveredObjectId !== undefined) executionClickRef.current(String(param.hoveredObjectId), null);
+    };
+    chart.subscribeClick(handleExecutionClick);
     movingAverageSeriesRef.current = MA_CONFIG
-      .filter(({ key }) => availableMaKeys.includes(key))
       .map(({ key, color }) => {
         const series = chart.addSeries(LineSeries, {
           color,
@@ -384,16 +402,10 @@ export function ProfessionalCandlestickChart({
           crosshairMarkerVisible: false,
           visible: showMovingAverages,
         });
-        series.setData(buildMovingAverageData(bars, key).map((point) => ({
-          time: point.time as Time,
-          value: point.value,
-        })));
         return series;
       });
 
-    bollSeriesRef.current = BOLL_CONFIG.flatMap(({ key, color }) => {
-      const data = buildIndicatorData(bars, 'boll', key);
-      if (!data.length) return [];
+    bollSeriesRef.current = BOLL_CONFIG.map(({ key, color }) => {
       const series = chart.addSeries(LineSeries, {
         color,
         lineWidth: 1,
@@ -403,44 +415,63 @@ export function ProfessionalCandlestickChart({
         crosshairMarkerVisible: false,
         visible: showBoll,
       });
-      series.setData(data.map((point) => ({ time: point.time as Time, value: point.value })));
-      return [series];
+      return series;
     });
+
+    updateMainDataRef.current = (data) => {
+      candleSeries.setData(data.map((bar) => ({ time: bar.time as Time, open: bar.open, high: bar.high, low: bar.low, close: bar.close })));
+      movingAverageSeriesRef.current.forEach((series, index) => {
+        series.setData(buildMovingAverageData(data, MA_CONFIG[index].key).map((point) => ({ time: point.time as Time, value: point.value })));
+      });
+      bollSeriesRef.current.forEach((series, index) => {
+        series.setData(buildIndicatorData(data, 'boll', BOLL_CONFIG[index].key).map((point) => ({ time: point.time as Time, value: point.value })));
+      });
+    };
 
     const handleCrosshairMove = (param: MouseEventParams<Time>) => {
       if (!param.time) {
-        setActiveBar(bars.at(-1) ?? null);
+        hoveredDateRef.current = null;
+        setActiveBar(barsRef.current.at(-1) ?? null);
         onActiveDateChangeRef.current?.(null);
         return;
       }
       const date = String(param.time);
-      const bar = bars.find((item) => item.time === date);
+      const bar = barsRef.current.find((item) => item.time === date);
       if (!bar) return;
+      hoveredDateRef.current = date;
       setActiveBar(bar);
       onActiveDateChangeRef.current?.(date);
     };
     chart.subscribeCrosshairMove(handleCrosshairMove);
 
-    const visibleBars = Math.min(windowSize ?? DEFAULT_WINDOW_SIZE, bars.length);
-    chart.timeScale().setVisibleLogicalRange({
-      from: Math.max(0, bars.length - visibleBars - 0.5),
-      to: bars.length + 0.5,
-    });
-
     return () => {
+      chart.unsubscribeClick(handleExecutionClick);
+      executionMarkers.detach();
+      executionMarkersRef.current = null;
+      volumeExecutionMarkersRef.current?.detach();
+      volumeExecutionMarkersRef.current = null;
       chart.unsubscribeCrosshairMove(handleCrosshairMove);
       chartApiRef.current = null;
       movingAverageSeriesRef.current = [];
       bollSeriesRef.current = [];
       auxiliarySeriesRef.current = {};
+      updateMainDataRef.current = () => undefined;
+      updateAuxiliaryDataRef.current = [];
+      chartDataRef.current = [];
       chart.remove();
     };
-  }, [bars, chartMode]);
+  }, [selectedCode, hasDailyBars, chartMode]);
+
+  useEffect(() => {
+    chartApiRef.current?.applyOptions(chartAppearance(appearance));
+  }, [appearance]);
 
   useEffect(() => {
     const chart = chartApiRef.current;
     if (chartMode !== 'daily' || !chart || bars.length === 0) return;
 
+    volumeExecutionMarkersRef.current?.detach();
+    volumeExecutionMarkersRef.current = null;
     Object.values(auxiliarySeriesRef.current).flat().forEach((series) => {
       try {
         chart.removeSeries(series);
@@ -449,6 +480,7 @@ export function ProfessionalCandlestickChart({
       }
     });
     auxiliarySeriesRef.current = {};
+    updateAuxiliaryDataRef.current = [];
 
     const selected = activeIndicators.filter((indicator) => availableIndicators.includes(indicator));
     selected.forEach((indicator, index) => {
@@ -459,8 +491,6 @@ export function ProfessionalCandlestickChart({
         key: string,
         color: string,
       ) => {
-        const data = buildIndicatorData(bars, group, key);
-        if (!data.length) return;
         const series = chart.addSeries(LineSeries, {
           color,
           lineWidth: 1,
@@ -468,7 +498,9 @@ export function ProfessionalCandlestickChart({
           lastValueVisible: false,
           crosshairMarkerVisible: false,
         }, paneIndex);
-        series.setData(data.map((point) => ({ time: point.time as Time, value: point.value })));
+        updateAuxiliaryDataRef.current.push((data) => {
+          series.setData(buildIndicatorData(data, group, key).map((point) => ({ time: point.time as Time, value: point.value })));
+        });
         managed.push(series);
       };
 
@@ -478,14 +510,12 @@ export function ProfessionalCandlestickChart({
           priceLineVisible: false,
           lastValueVisible: false,
         }, paneIndex);
-        volumeSeries.setData(buildVolumeData(bars).map((item) => ({
-          ...item,
-          time: item.time as Time,
-        })));
+        volumeExecutionMarkersRef.current = createSeriesMarkers(volumeSeries, []);
+        updateAuxiliaryDataRef.current.push((data) => {
+          volumeSeries.setData(buildVolumeData(data).map((item) => ({ ...item, time: item.time as Time })));
+        });
         managed.push(volumeSeries);
         VOLUME_MA_CONFIG.forEach(({ key, color }) => {
-          const data = buildVolumeMovingAverageData(bars, key);
-          if (!data.length) return;
           const series = chart.addSeries(LineSeries, {
             color,
             lineWidth: 1,
@@ -493,24 +523,25 @@ export function ProfessionalCandlestickChart({
             lastValueVisible: false,
             crosshairMarkerVisible: false,
           }, paneIndex);
-          series.setData(data.map((point) => ({ time: point.time as Time, value: point.value })));
+          updateAuxiliaryDataRef.current.push((data) => {
+            series.setData(buildVolumeMovingAverageData(data, key).map((point) => ({ time: point.time as Time, value: point.value })));
+          });
           managed.push(series);
         });
       } else if (indicator === 'macd') {
         AUXILIARY_LINES.macd.slice(0, 2).forEach(({ key, color }) => {
           addLine('macd', key, color);
         });
-        const histogramData = buildIndicatorData(bars, 'macd', 'hist');
-        if (histogramData.length) {
+        {
           const histogram = chart.addSeries(HistogramSeries, {
             priceLineVisible: false,
             lastValueVisible: false,
           }, paneIndex);
-          histogram.setData(histogramData.map((point) => ({
+          updateAuxiliaryDataRef.current.push((data) => histogram.setData(buildIndicatorData(data, 'macd', 'hist').map((point) => ({
             time: point.time as Time,
             value: point.value,
             color: point.value >= 0 ? 'rgba(240, 100, 97, 0.52)' : 'rgba(32, 185, 139, 0.52)',
-          })));
+          }))));
           managed.push(histogram);
         }
       } else {
@@ -526,7 +557,7 @@ export function ProfessionalCandlestickChart({
     selected.forEach((_, index) => {
       panes[index + 1]?.setStretchFactor(1);
     });
-  }, [activeIndicators, availableIndicators, bars, chartMode]);
+  }, [activeIndicators, indicatorKey, selectedCode, hasDailyBars, chartMode]);
 
   useEffect(() => {
     movingAverageSeriesRef.current.forEach((series) => {
@@ -540,13 +571,31 @@ export function ProfessionalCandlestickChart({
 
   useEffect(() => {
     const chart = chartApiRef.current;
-    if (!chart || bars.length === 0 || windowSize === null) return;
-    const visibleBars = Math.min(windowSize, bars.length);
-    chart.timeScale().setVisibleLogicalRange({
-      from: Math.max(0, bars.length - visibleBars - 0.5),
-      to: bars.length + 0.5,
-    });
-  }, [bars.length, windowSize]);
+    if (!chart || bars.length === 0) return;
+    const previous = chartDataRef.current;
+    const range = chart.timeScale().getVisibleLogicalRange();
+    updateMainDataRef.current(bars);
+    updateAuxiliaryDataRef.current.forEach((update) => update(bars));
+    if (previous.length && range) {
+      // Preserve the inspected dates, including when the oldest daily bar rolls out.
+      const anchor = previous.findIndex((bar) => bars.some((next) => next.time === bar.time));
+      const offset = anchor < 0 ? 0 : bars.findIndex((bar) => bar.time === previous[anchor].time) - anchor;
+      const shift = range.to >= previous.length - 1 ? bars.length - previous.length : offset;
+      chart.timeScale().setVisibleLogicalRange({ from: range.from + shift, to: range.to + shift });
+    } else {
+      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, bars.length - DEFAULT_WINDOW_SIZE - 0.5), to: bars.length + 0.5 });
+    }
+    chartDataRef.current = bars;
+  }, [bars, chartMode, selectedCode, activeIndicators, indicatorKey]);
+
+  useEffect(() => {
+    executionMarkersRef.current?.setMarkers(executions.model.markers);
+    volumeExecutionMarkersRef.current?.setMarkers(executions.model.volumeMarkers);
+  }, [executions.model, selectedCode, hasDailyBars, chartMode, activeIndicators, indicatorKey]);
+
+  const resetChart = () => {
+    chartApiRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, bars.length - DEFAULT_WINDOW_SIZE - 0.5), to: bars.length + 0.5 });
+  };
 
   const fitChart = () => chartApiRef.current?.timeScale().fitContent();
   const navigateChart = (action: ChartNavigationAction) => {
@@ -558,14 +607,19 @@ export function ProfessionalCandlestickChart({
       bars.length,
     );
     if (!nextRange) return;
-    setWindowSize(null);
     timeScale.setVisibleLogicalRange(nextRange);
   };
   const toggleFullscreen = async () => {
     const element = shellRef.current;
     if (!element) return;
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await element.requestFullscreen();
+    setFullscreenError(null);
+    try {
+      if (document.fullscreenElement === element) await document.exitFullscreen();
+      else if (element.requestFullscreen) await element.requestFullscreen();
+      else setFullscreenError('当前浏览器不支持图表全屏');
+    } catch {
+      setFullscreenError('未能进入全屏，请重试');
+    }
   };
   const toggleAuxiliary = (indicator: AuxiliaryChartIndicator) => {
     setActiveIndicators((current) => current.includes(indicator)
@@ -575,7 +629,6 @@ export function ProfessionalCandlestickChart({
   const switchMode = (nextMode: ChartMode) => {
     if (nextMode === chartMode) return;
     setActiveBar(bars.at(-1) ?? null);
-    setWindowSize(DEFAULT_WINDOW_SIZE);
     onActiveDateChangeRef.current?.(null);
     onChartModeChange?.(nextMode);
   };
@@ -816,14 +869,14 @@ export function ProfessionalCandlestickChart({
               {AUXILIARY_LABELS[indicator]}
             </button>
           ))}
-          <button onClick={fitChart} title="适配全部 K 线" aria-label="适配全部 K 线"><Focus size={14} /></button>
-          <button onClick={() => setWindowSize(DEFAULT_WINDOW_SIZE)} title="重置窗口" aria-label="重置窗口"><RotateCcw size={14} /></button>
-          <button onClick={() => void toggleFullscreen()} title="全屏图表" aria-label="全屏图表"><Expand size={14} /></button>
+          <button onClick={fitChart} disabled={!hasDailyBars} title="适配全部 K 线" aria-label="适配全部 K 线"><Focus size={14} /></button>
+          <button onClick={resetChart} disabled={!hasDailyBars} title="回到最近 60 个交易日" aria-label="重置窗口"><RotateCcw size={14} /></button>
+          <button onClick={() => void toggleFullscreen()} title={fullscreen ? '退出全屏' : '全屏图表'} aria-label={fullscreen ? '退出全屏' : '全屏图表'}>{fullscreen ? <Minimize size={14} /> : <Expand size={14} />}</button>
         </div>
         </div>}
 
         {!isIntradayMode && <div className="indicator-legend-board" aria-label="当前指标图例">
-        {showMovingAverages && (
+        {showMovingAverages && availableMaKeys.length > 0 && (
           <div className="indicator-legend-row">
             <strong>MA</strong>
             {MA_CONFIG.filter(({ key }) => availableMaKeys.includes(key)).flatMap(({ key, label, color }) => {
@@ -834,7 +887,7 @@ export function ProfessionalCandlestickChart({
             })}
           </div>
         )}
-        {showBoll && (
+        {showBoll && bollAvailable && (
           <div className="indicator-legend-row">
             <strong>BOLL</strong>
             {BOLL_CONFIG.flatMap(({ key, label, color }) => {
@@ -860,6 +913,8 @@ export function ProfessionalCandlestickChart({
         </div>}
       </div>
 
+      {fullscreenError && <div className="chart-action-error" role="alert">{fullscreenError}</div>}
+      {!isIntradayMode && <ChartExecutions state={executions} portalContainer={fullscreen ? shellRef.current : undefined} />}
       <div className="chart-canvas-shell" style={{ height: chartCanvasHeight }}>
         {isIntradayMode ? (
           intradayBars.length > 0 ? (
