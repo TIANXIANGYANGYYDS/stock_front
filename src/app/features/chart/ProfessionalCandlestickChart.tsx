@@ -59,6 +59,11 @@ import {
 import { IntradayCandlestickChart } from './IntradayCandlestickChart';
 import { useChartExecutions } from './useChartExecutions';
 import { ChartExecutions } from './ChartExecutions';
+import { createSeriesUpdater } from './series-updater';
+import { useTradingDaySnapshots } from '../../hooks/useQuoteSnapshots';
+import { selectQuoteSnapshots, type ChartMode } from '../../lib/quote-snapshots';
+import { AuctionPanel } from './AuctionPanel';
+import { QuoteSnapshotChart } from './QuoteSnapshotChart';
 
 interface ProfessionalCandlestickChartProps {
   stock: SectorStock | null;
@@ -74,6 +79,7 @@ interface ProfessionalCandlestickChartProps {
   intradayDelayed?: boolean;
   intradayError?: string | null;
   chartMode?: ChartMode;
+  quoteTradeDate?: string;
   onChartModeChange?: (mode: ChartMode) => void;
   intradayInterval?: IntradayInterval;
   onIntradayIntervalChange?: (interval: IntradayInterval) => void;
@@ -90,7 +96,6 @@ interface OhlcLegend {
 }
 
 type ManagedSeries = ISeriesApi<'Line'> | ISeriesApi<'Histogram'>;
-type ChartMode = 'daily' | 'intraday';
 
 const RISE_COLOR = '#f06461';
 const FALL_COLOR = '#20b98b';
@@ -207,6 +212,7 @@ export function ProfessionalCandlestickChart({
   intradayDelayed = false,
   intradayError = null,
   chartMode = 'daily',
+  quoteTradeDate,
   onChartModeChange,
   intradayInterval = '1m',
   onIntradayIntervalChange,
@@ -228,7 +234,13 @@ export function ProfessionalCandlestickChart({
   const updateMainDataRef = useRef<(data: ChartBar[]) => void>(() => undefined);
   const updateAuxiliaryDataRef = useRef<Array<(data: ChartBar[]) => void>>([]);
   const selectedCode = stockCode || stock?.code || '';
-  const dailyStock = !loading && stock?.code === selectedCode ? stock : null;
+  const dailyStock = stock?.code === selectedCode ? stock : null;
+  const snapshotTradeDate = quoteTradeDate || intradayData?.tradeDate || realtimeData?.tradingDate || dailyStock?.tradeDate || '';
+  const seconds = useTradingDaySnapshots({
+    code: selectedCode, tradeDate: snapshotTradeDate,
+    enabled: chartMode === 'seconds',
+  });
+  const secondItems = useMemo(() => selectQuoteSnapshots(seconds.data?.items ?? [], 'snapshots'), [seconds.data]);
   const intradayBars = useMemo(
     () => selectIntradayBars(
       intradayData?.items ?? [],
@@ -418,13 +430,16 @@ export function ProfessionalCandlestickChart({
       return series;
     });
 
+    const updateCandles = createSeriesUpdater(candleSeries);
+    const updateMa = movingAverageSeriesRef.current.map(series => createSeriesUpdater(series));
+    const updateBoll = bollSeriesRef.current.map(series => createSeriesUpdater(series));
     updateMainDataRef.current = (data) => {
-      candleSeries.setData(data.map((bar) => ({ time: bar.time as Time, open: bar.open, high: bar.high, low: bar.low, close: bar.close })));
+      updateCandles(data.map((bar) => ({ time: bar.time as Time, open: bar.open, high: bar.high, low: bar.low, close: bar.close })));
       movingAverageSeriesRef.current.forEach((series, index) => {
-        series.setData(buildMovingAverageData(data, MA_CONFIG[index].key).map((point) => ({ time: point.time as Time, value: point.value })));
+        updateMa[index](buildMovingAverageData(data, MA_CONFIG[index].key).map((point) => ({ time: point.time as Time, value: point.value })));
       });
       bollSeriesRef.current.forEach((series, index) => {
-        series.setData(buildIndicatorData(data, 'boll', BOLL_CONFIG[index].key).map((point) => ({ time: point.time as Time, value: point.value })));
+        updateBoll[index](buildIndicatorData(data, 'boll', BOLL_CONFIG[index].key).map((point) => ({ time: point.time as Time, value: point.value })));
       });
     };
 
@@ -498,8 +513,9 @@ export function ProfessionalCandlestickChart({
           lastValueVisible: false,
           crosshairMarkerVisible: false,
         }, paneIndex);
+        const update = createSeriesUpdater(series);
         updateAuxiliaryDataRef.current.push((data) => {
-          series.setData(buildIndicatorData(data, group, key).map((point) => ({ time: point.time as Time, value: point.value })));
+          update(buildIndicatorData(data, group, key).map((point) => ({ time: point.time as Time, value: point.value })));
         });
         managed.push(series);
       };
@@ -511,8 +527,9 @@ export function ProfessionalCandlestickChart({
           lastValueVisible: false,
         }, paneIndex);
         volumeExecutionMarkersRef.current = createSeriesMarkers(volumeSeries, []);
+        const updateVolume = createSeriesUpdater(volumeSeries);
         updateAuxiliaryDataRef.current.push((data) => {
-          volumeSeries.setData(buildVolumeData(data).map((item) => ({ ...item, time: item.time as Time })));
+          updateVolume(buildVolumeData(data).map((item) => ({ ...item, time: item.time as Time })));
         });
         managed.push(volumeSeries);
         VOLUME_MA_CONFIG.forEach(({ key, color }) => {
@@ -523,8 +540,9 @@ export function ProfessionalCandlestickChart({
             lastValueVisible: false,
             crosshairMarkerVisible: false,
           }, paneIndex);
+          const update = createSeriesUpdater(series);
           updateAuxiliaryDataRef.current.push((data) => {
-            series.setData(buildVolumeMovingAverageData(data, key).map((point) => ({ time: point.time as Time, value: point.value })));
+            update(buildVolumeMovingAverageData(data, key).map((point) => ({ time: point.time as Time, value: point.value })));
           });
           managed.push(series);
         });
@@ -537,7 +555,8 @@ export function ProfessionalCandlestickChart({
             priceLineVisible: false,
             lastValueVisible: false,
           }, paneIndex);
-          updateAuxiliaryDataRef.current.push((data) => histogram.setData(buildIndicatorData(data, 'macd', 'hist').map((point) => ({
+          const update = createSeriesUpdater(histogram);
+          updateAuxiliaryDataRef.current.push((data) => update(buildIndicatorData(data, 'macd', 'hist').map((point) => ({
             time: point.time as Time,
             value: point.value,
             color: point.value >= 0 ? 'rgba(240, 100, 97, 0.52)' : 'rgba(32, 185, 139, 0.52)',
@@ -643,6 +662,13 @@ export function ProfessionalCandlestickChart({
   const showingLatestBar = Boolean(latestBar && activeDailyBar?.time === latestBar.time);
   const latestIntradayBar = intradayBars.at(-1) ?? null;
   const isIntradayMode = chartMode === 'intraday';
+  const isSecondsMode = chartMode === 'seconds';
+  const isDailyMode = chartMode === 'daily';
+  const latestSecond = secondItems.at(-1);
+  const secondsState = seconds.initialLoading ? '秒级行情加载中'
+    : seconds.error ? secondItems.length ? '数据可能延迟' : '秒级行情暂不可用'
+      : !secondItems.length ? seconds.data?.items.length ? '当日暂无有效秒级报价' : '当日暂无秒级行情'
+        : `${secondItems.length} 个采样点 · ${formatShanghaiTime(latestSecond!.observedAt)}`;
   const showingCurrentDailyPosition = !activeDailyBar || showingLatestBar;
   const realtimeTradingDate = realtimeData?.tradingDate ?? '';
   const realtimeDateIsUsable = Boolean(
@@ -670,7 +696,9 @@ export function ProfessionalCandlestickChart({
       ? realtimeDailyChangePercent ?? dailyStock?.changePercent ?? legend?.changePercent
       : legend?.changePercent
     : null;
-  const priceTone = isIntradayMode
+  const priceTone = isSecondsMode
+    ? toneFromDirection(latestSecond?.price && latestSecond.previousClose ? latestSecond.price - latestSecond.previousClose : null)
+    : isIntradayMode
     ? usableRealtime
       ? 'flat'
       : latestIntradayBar
@@ -679,12 +707,12 @@ export function ProfessionalCandlestickChart({
         )
       : 'flat'
     : toneFromDirection(dailyDirection);
-  const displayedPrice = isIntradayMode
+  const displayedPrice = isSecondsMode ? latestSecond?.price : isIntradayMode
     ? usableRealtime?.price ?? latestIntradayBar?.close
     : showingCurrentDailyPosition
       ? usableRealtime?.price ?? legend?.close ?? dailyStock?.close
       : legend?.close;
-  const showingRealtimeDailyPrice = !isIntradayMode
+  const showingRealtimeDailyPrice = isDailyMode
     && showingCurrentDailyPosition
     && usableRealtime !== null;
   const displayedDailyChangePercent = showingRealtimeDailyPrice && realtimeDateIsNewer
@@ -714,7 +742,7 @@ export function ProfessionalCandlestickChart({
           ? '交易中'
           : '状态未知';
   const dailyState = loading
-    ? '日线行情加载中'
+    ? dailyStock ? '日线更新中 · 保留上次行情' : '日线行情加载中'
     : dailyStock
       ? [
           showingLatestBar
@@ -736,7 +764,7 @@ export function ProfessionalCandlestickChart({
             : '暂无日线行情';
   const activeValidIndicators = activeIndicators
     .filter((indicator) => availableIndicators.includes(indicator));
-  const chartCanvasHeight = isIntradayMode
+  const chartCanvasHeight = !isDailyMode
     ? MAIN_PANE_HEIGHT + AUXILIARY_PANE_HEIGHT
     : Math.max(430, MAIN_PANE_HEIGHT + activeValidIndicators.length * AUXILIARY_PANE_HEIGHT);
 
@@ -772,12 +800,10 @@ export function ProfessionalCandlestickChart({
           <div className="stock-identity">
             <strong>{stockName || stock?.name || selectedRealtime?.name || '等待选择股票'}</strong>
             <span>{stockCode || stock?.code || selectedRealtime?.code || '--'}</span>
-            {(isIntradayMode
-              ? intradayData?.tradeDate
+            {(!isDailyMode ? snapshotTradeDate
               : displayedDailyDate) && (
               <span className="trade-date-chip">
-                {isIntradayMode
-                  ? intradayData?.tradeDate
+                {!isDailyMode ? snapshotTradeDate
                   : displayedDailyDate}
               </span>
             )}
@@ -785,7 +811,7 @@ export function ProfessionalCandlestickChart({
           <div className="stock-price-row">
             <span className={toneClass(priceTone)}>{formatPrice(displayedPrice)}</span>
             {showingRealtimeDailyPrice && <small className="quote-source-tag">实时价</small>}
-            {!isIntradayMode && (
+            {isDailyMode && (
               <small className={toneClass(priceTone)}>
                 {displayedDailyChangePercent === null || displayedDailyChangePercent === undefined
                   ? '--'
@@ -793,8 +819,8 @@ export function ProfessionalCandlestickChart({
               </small>
             )}
           </div>
-          <div className={`stock-live-state${(isIntradayMode ? intradayIsDelayed : realtimeIsDelayed) ? ' is-delayed' : ''}`}>
-            {isIntradayMode
+          <div className={`stock-live-state${(isSecondsMode ? seconds.delayed : isIntradayMode ? intradayIsDelayed : realtimeIsDelayed) ? ' is-delayed' : ''}`}>
+            {isSecondsMode ? `秒级行情 · ${secondsState}` : isIntradayMode
               ? latestIntradayBar
                 ? `分钟线 ${intradayInterval} ${formatShanghaiTime(latestIntradayBar.timestamp)} · ${minuteState}`
                 : usableRealtime
@@ -823,6 +849,14 @@ export function ProfessionalCandlestickChart({
           >
             分钟线
           </button>
+          <button
+            type="button"
+            aria-pressed={isSecondsMode}
+            className={isSecondsMode ? 'is-active' : ''}
+            onClick={() => switchMode('seconds')}
+          >
+            秒级
+          </button>
         </div>
         </div>
 
@@ -843,7 +877,12 @@ export function ProfessionalCandlestickChart({
           </div>
         )}
 
-        {!isIntradayMode && <div className="chart-toolbar">
+        {isSecondsMode && <div className="snapshot-controls">
+          <span>全天走势 · 09:30–15:00</span>
+          <span>按实际采样展示 · 通常约 5 秒一笔</span>
+        </div>}
+
+        {isDailyMode && <div className="chart-toolbar">
         <div className="ohlc-legend">
           <span>{legend?.time || '--'}</span>
           <span>开 <b>{formatPrice(legend?.open)}</b></span>
@@ -875,7 +914,7 @@ export function ProfessionalCandlestickChart({
         </div>
         </div>}
 
-        {!isIntradayMode && <div className="indicator-legend-board" aria-label="当前指标图例">
+        {isDailyMode && <div className="indicator-legend-board" aria-label="当前指标图例">
         {showMovingAverages && availableMaKeys.length > 0 && (
           <div className="indicator-legend-row">
             <strong>MA</strong>
@@ -914,29 +953,47 @@ export function ProfessionalCandlestickChart({
       </div>
 
       {fullscreenError && <div className="chart-action-error" role="alert">{fullscreenError}</div>}
-      {!isIntradayMode && <ChartExecutions state={executions} portalContainer={fullscreen ? shellRef.current : undefined} />}
-      <div className="chart-canvas-shell" style={{ height: chartCanvasHeight }}>
-        {isIntradayMode ? (
-          intradayBars.length > 0 ? (
-            <IntradayCandlestickChart
-              bars={intradayBars}
-              stockCode={selectedCode}
-              tradingDate={intradayData?.tradeDate}
-            />
-          ) : (
-            <div className="terminal-empty">
-              {intradayLoading && <span className="loading-pulse" />}
-              {minuteState}
+      {isDailyMode && <ChartExecutions state={executions} portalContainer={fullscreen ? shellRef.current : undefined} />}
+      <div className={`chart-canvas-shell${isIntradayMode ? ' has-auction' : ''}`} style={{ height: chartCanvasHeight }}>
+        {isSecondsMode ? (
+          <div className="seconds-chart-content">
+            {seconds.data?.possiblyTruncated && <div className="snapshot-notice" role="status">部分秒级数据可能未完整返回</div>}
+            {seconds.delayed && secondItems.length > 0 && <div className="snapshot-notice" role="status">刷新失败，保留上次秒级行情</div>}
+            {secondItems.length > 0 ? <QuoteSnapshotChart items={secondItems} datasetKey={`${selectedCode}:${snapshotTradeDate}:seconds`} /> : (
+              <div className="terminal-empty snapshot-empty" role="status">
+                {seconds.initialLoading && <span className="loading-pulse" />}
+                <span>{secondsState}</span>
+                {!seconds.initialLoading && !seconds.error && <small>当前交易日尚无已采集的有效报价</small>}
+                {seconds.error && <button type="button" onClick={seconds.refresh}>重试</button>}
+              </div>
+            )}
+          </div>
+        ) : isIntradayMode ? (
+          <div className="intraday-with-auction">
+            <AuctionPanel code={selectedCode} tradeDate={snapshotTradeDate} />
+            <div className="intraday-minute-panel">
+              {intradayBars.length > 0 ? (
+                <IntradayCandlestickChart
+                  bars={intradayBars}
+                  stockCode={selectedCode}
+                  tradingDate={intradayData?.tradeDate}
+                />
+              ) : (
+                <div className="terminal-empty">
+                  {intradayLoading && <span className="loading-pulse" />}
+                  {minuteState}
+                </div>
+              )}
             </div>
-          )
-        ) : loading ? (
+          </div>
+        ) : loading && bars.length === 0 ? (
           <div className="terminal-empty"><span className="loading-pulse" />正在加载个股行情...</div>
         ) : bars.length === 0 ? (
           <div className="terminal-empty">请选择包含有效日 K 数据的股票</div>
         ) : (
           <div ref={chartContainerRef} className="chart-canvas" />
         )}
-        {!isIntradayMode && !loading && bars.length > 0 && (
+        {isDailyMode && bars.length > 0 && (
           <div
             className="chart-navigation-controls"
             style={{ top: MAIN_PANE_HEIGHT - 56 }}

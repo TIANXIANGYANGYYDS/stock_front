@@ -2,7 +2,7 @@
 
 import { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { StockListItem } from '../../lib/api';
 import { StockNavigator } from './StockNavigator';
 
@@ -15,10 +15,33 @@ const items: StockListItem[] = [
 ];
 
 afterEach(() => {
+  vi.useRealTimers();
   document.body.innerHTML = '';
 });
 
 describe('StockNavigator', () => {
+  it('keeps the hovered prefetch when clicking focuses the same row', async () => {
+    vi.useFakeTimers();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const onPrefetch = vi.fn();
+    await act(async () => root.render(<StockNavigator items={items} query="" selectedCode="000001"
+      loading={false} error={null} missingCodes={[]} realtimeDelayed={false} realtimeError={null}
+      onQueryChange={() => {}} onSelect={() => {}} onPrefetch={onPrefetch} />));
+    const row = host.querySelectorAll<HTMLButtonElement>('.navigator-stock-row')[1];
+    await act(async () => row.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })));
+    await act(async () => vi.advanceTimersByTime(120));
+    expect(onPrefetch).toHaveBeenCalledTimes(1);
+    const signal = onPrefetch.mock.calls[0][1] as AbortSignal;
+    await act(async () => row.focus());
+    await act(async () => vi.advanceTimersByTime(120));
+    expect(onPrefetch).toHaveBeenCalledTimes(1);
+    expect(signal.aborted).toBe(false);
+    await act(async () => root.unmount());
+    expect(signal.aborted).toBe(true);
+  });
+
   it('keeps search and selected stock as visible user-controlled state', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);

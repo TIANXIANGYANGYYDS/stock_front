@@ -455,30 +455,38 @@ describe('latest trading date API contract', () => {
     ]);
   });
 
-  it('passes supplied abort signals to stock list and detail requests without changing URLs', async () => {
+  it('cancels shared stock requests when their readers abort without changing URLs', async () => {
+    vi.resetModules();
+    const { getStockList, getStockDetail } = await import('./api');
     const requests: Array<{ url: string; signal: AbortSignal | null }> = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       requests.push({ url: String(input), signal: init?.signal ?? null });
-      return new Response(JSON.stringify({ items: [], total: 0 }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
       });
     }));
     const listController = new AbortController();
     const detailController = new AbortController();
 
-    await getStockList('2026-08-07', '平安', listController.signal);
-    await getStockDetail('000001', '2026-08-07', detailController.signal);
+    const results = Promise.allSettled([
+      getStockList('2026-08-07', '平安', listController.signal),
+      getStockDetail('000001', '2026-08-07', detailController.signal),
+    ]);
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
 
     expect(requests).toEqual([
       {
         url: '/backend-api/api/v1/stocks?page=1&page_size=50&keyword=%E5%B9%B3%E5%AE%89&adjust=qfq',
-        signal: listController.signal,
+        signal: expect.any(AbortSignal),
       },
       {
         url: '/backend-api/api/v1/stocks/000001/daily?page=1&page_size=120&adjust=qfq&end_date=2026-08-07',
-        signal: detailController.signal,
+        signal: expect.any(AbortSignal),
       },
     ]);
+    listController.abort();
+    detailController.abort();
+    expect((await results).every(result => result.status === 'rejected')).toBe(true);
+    expect(requests.every(request => request.signal?.aborted)).toBe(true);
   });
 });

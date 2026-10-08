@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router';
 import { TerminalHeader, type WorkspaceView } from './components/TerminalHeader';
 import { DecisionWorkspace } from './features/decision/DecisionWorkspace';
@@ -12,15 +12,19 @@ import {
 import { useRealtimeMarketIndices } from './hooks/useRealtimeQuotes';
 import { WorkspaceStateProvider } from './hooks/useWorkspaceState';
 import { AppearanceProvider, useAppearance } from './hooks/useAppearance';
-import * as m from 'motion/react-m';
-import { StudioMotionProvider, useEntranceMotion } from './components/StudioMotion';
+import { StudioMotionProvider } from './components/StudioMotion';
 import CommandCenter from './components/CommandCenter';
 import MarketPanorama from './features/panorama/MarketPanorama';
 
 const LATEST_DATES_REFRESH_MS = 60_000;
 
+function RealtimeHeader(props: Omit<ComponentProps<typeof TerminalHeader>, 'realtimeIndices' | 'indicesLoading' | 'indicesDelayed' | 'indicesError'>) {
+  const realtimeIndices = useRealtimeMarketIndices();
+  return <TerminalHeader {...props} realtimeIndices={realtimeIndices.data}
+    indicesLoading={realtimeIndices.initialLoading} indicesDelayed={realtimeIndices.delayed} indicesError={realtimeIndices.error} />;
+}
+
 function AppContent() {
-  const entrance = useEntranceMotion();
   const location = useLocation();
   const navigate = useNavigate();
   const { toggleAppearance } = useAppearance();
@@ -49,7 +53,6 @@ function AppContent() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
-  const realtimeIndices = useRealtimeMarketIndices();
   const storedView = location.state?.workspaceView;
   const activeView: WorkspaceView = /^\/quant(?:\/|$)/.test(location.pathname)
     ? 'quant'
@@ -72,7 +75,8 @@ function AppContent() {
         const latestDates = await getLatestMarketDates();
         if (cancelled) return;
 
-        setMarketTradeDate(latestDates.marketTradeDate || undefined);
+        // A temporarily empty date response must not unmount an already usable workspace.
+        setMarketTradeDate(previous => latestDates.marketTradeDate || previous);
         setAnalysisDate(latestDates.analysisDate);
         setTradeDateError(null);
         setTradeDateLoading(false);
@@ -113,19 +117,15 @@ function AppContent() {
 
   return (
     <div className="stock-terminal studio-shell" data-workspace={activeView}>
-      <TerminalHeader
+      <RealtimeHeader
         activeView={activeView}
         tradeDate={marketTradeDate}
-        realtimeIndices={realtimeIndices.data}
-        indicesLoading={realtimeIndices.initialLoading}
-        indicesDelayed={realtimeIndices.delayed}
-        indicesError={realtimeIndices.error}
         onViewChange={handleViewChange}
         onOpenCommands={() => openUtility('commands')}
         onOpenPanorama={() => openUtility('panorama')}
       />
 
-      <m.div key={activeView} className="terminal-main" {...entrance}>
+      <div key={activeView} className="terminal-main">
         {activeView === 'creators' && <CreatorInsightsView />}
         {activeView === 'quant' && <QuantWorkspace />}
         {requiresMarketDate && tradeDateLoading && (
@@ -157,7 +157,7 @@ function AppContent() {
         {requiresMarketDate && !tradeDateLoading && marketTradeDate && activeView === 'news' && (
           <NewsIntelligenceView tradeDate={marketTradeDate} />
         )}
-      </m.div>
+      </div>
       {utility === 'commands' && <CommandCenter tradeDate={marketTradeDate} onClose={closeUtility} onRestoreFocus={restoreUtilityFocus}
         onView={(view) => { closeUtility(); handleViewChange(view); }} onStock={openStock}
         onPanorama={() => openUtility('panorama')} onTheme={() => { closeUtility(); requestAnimationFrame(() => toggleAppearance()); }} />}

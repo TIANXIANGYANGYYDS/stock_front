@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Database, Search, Waves, X } from 'lucide-react';
 import type { StockListItem } from '../../lib/api';
 
@@ -14,6 +14,7 @@ interface StockNavigatorProps {
   onQueryChange: (query: string) => void;
   onSelect: (code: string) => void;
   onRetry?: () => void;
+  onPrefetch?: (code: string, signal: AbortSignal) => void;
 }
 
 function formatPrice(value: number | null): string {
@@ -37,8 +38,26 @@ export function StockNavigator({
   onQueryChange,
   onSelect,
   onRetry,
+  onPrefetch,
 }: StockNavigatorProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const prefetchRef = useRef<{ code: string; timer: number; controller: AbortController } | null>(null);
+  const cancelPrefetch = () => {
+    if (!prefetchRef.current) return;
+    window.clearTimeout(prefetchRef.current.timer);
+    prefetchRef.current.controller.abort();
+    prefetchRef.current = null;
+  };
+  const prefetch = (code: string) => {
+    // Clicking a hovered row focuses it; keep its in-flight prefetch for the click.
+    if (prefetchRef.current?.code === code) return;
+    cancelPrefetch();
+    if (!onPrefetch || code === selectedCode) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => onPrefetch(code, controller.signal), 120);
+    prefetchRef.current = { code, timer, controller };
+  };
+  useEffect(() => cancelPrefetch, []);
   const clearSearch = () => { onQueryChange(''); inputRef.current?.focus(); };
   return (
     <aside className="terminal-panel stock-navigator">
@@ -101,6 +120,10 @@ export function StockNavigator({
               key={stock.code}
               className={`navigator-stock-row${selectedCode === stock.code ? ' is-active' : ''}${realtimeMissing ? ' is-realtime-missing' : ''}`}
               onClick={() => onSelect(stock.code)}
+              onMouseEnter={() => prefetch(stock.code)}
+              onMouseLeave={cancelPrefetch}
+              onFocus={() => prefetch(stock.code)}
+              onBlur={cancelPrefetch}
               aria-pressed={selectedCode === stock.code}
             >
               <span className="stock-name-code"><strong>{stock.name}</strong><small>{stock.code}</small></span>

@@ -13,12 +13,15 @@ import {
   type Time,
 } from 'lightweight-charts';
 import type { StockIntradayBar } from '../../lib/api';
+import { createSeriesUpdater } from './series-updater';
 
 interface IntradayCandlestickChartProps {
   bars: StockIntradayBar[];
   stockCode: string;
   tradingDate?: string;
 }
+
+type SeriesUpdate<T extends 'Candlestick' | 'Histogram'> = (data: Parameters<ISeriesApi<T>['setData']>[0]) => void;
 
 const RISE_COLOR = '#f06461';
 const FALL_COLOR = '#20b98b';
@@ -56,6 +59,9 @@ export function IntradayCandlestickChart({
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const fittedDatasetRef = useRef<string | null>(null);
+  const previousBarsRef = useRef<StockIntradayBar[]>([]);
+  const updateCandlesRef = useRef<SeriesUpdate<'Candlestick'> | null>(null);
+  const updateVolumeRef = useRef<SeriesUpdate<'Histogram'> | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -99,7 +105,7 @@ export function IntradayCandlestickChart({
         secondsVisible: false,
         rightOffset: 1.5,
         barSpacing: 8,
-        minBarSpacing: 4,
+        minBarSpacing: 0.5,
         fixLeftEdge: true,
         tickMarkFormatter: formatShanghaiMinute,
       },
@@ -141,6 +147,8 @@ export function IntradayCandlestickChart({
       priceLineVisible: false,
       lastValueVisible: false,
     }, 1);
+    updateCandlesRef.current = createSeriesUpdater(candleSeriesRef.current);
+    updateVolumeRef.current = createSeriesUpdater(volumeSeriesRef.current);
     chart.panes()[0]?.setStretchFactor(3);
     chart.panes()[1]?.setStretchFactor(1);
 
@@ -148,7 +156,10 @@ export function IntradayCandlestickChart({
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
+      updateCandlesRef.current = null;
+      updateVolumeRef.current = null;
       fittedDatasetRef.current = null;
+      previousBarsRef.current = [];
       chart.remove();
     };
   }, []);
@@ -156,14 +167,20 @@ export function IntradayCandlestickChart({
   useEffect(() => { chartRef.current?.applyOptions(chartAppearance(appearance)); }, [appearance]);
 
   useEffect(() => {
-    candleSeriesRef.current?.setData(bars.map((bar) => ({
+    const datasetKey = `${stockCode}:${tradingDate ?? ''}:${bars[0]?.interval ?? ''}`;
+    if (fittedDatasetRef.current !== datasetKey) {
+      if (candleSeriesRef.current) updateCandlesRef.current = createSeriesUpdater(candleSeriesRef.current);
+      if (volumeSeriesRef.current) updateVolumeRef.current = createSeriesUpdater(volumeSeriesRef.current);
+    }
+    const range = chartRef.current?.timeScale().getVisibleLogicalRange();
+    updateCandlesRef.current?.(bars.map((bar) => ({
       time: toEpochSeconds(bar.timestamp),
       open: bar.open as number,
       high: bar.high as number,
       low: bar.low as number,
       close: bar.close as number,
     })));
-    volumeSeriesRef.current?.setData(bars.flatMap((bar) => (
+    updateVolumeRef.current?.(bars.flatMap((bar) => (
       typeof bar.volume === 'number' && Number.isFinite(bar.volume)
         ? [{
             time: toEpochSeconds(bar.timestamp),
@@ -175,11 +192,18 @@ export function IntradayCandlestickChart({
         : []
     )));
 
-    const datasetKey = `${stockCode}:${tradingDate ?? ''}:${bars[0]?.interval ?? ''}`;
     if (bars.length > 0 && fittedDatasetRef.current !== datasetKey) {
       chartRef.current?.timeScale().fitContent();
       fittedDatasetRef.current = datasetKey;
+    } else if (range && previousBarsRef.current.length) {
+      const previous = previousBarsRef.current;
+      const anchor = previous.findIndex(bar => bars.some(next => next.timestamp === bar.timestamp));
+      const offset = anchor < 0 ? 0 : bars.findIndex(bar => bar.timestamp === previous[anchor].timestamp) - anchor;
+      // Follow the live edge only when the user was already viewing the latest bars.
+      const shift = range.to >= previous.length - 1 ? bars.length - previous.length : offset;
+      chartRef.current?.timeScale().setVisibleLogicalRange({ from: range.from + shift, to: range.to + shift });
     }
+    previousBarsRef.current = bars;
   }, [bars, stockCode, tradingDate]);
 
   return <div ref={containerRef} className="chart-canvas intraday-chart-canvas" />;

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   getStockDetail,
   getStockList,
+  getCachedStockDetail,
+  getCachedStockList,
   type IntradayInterval,
   type SectorStock,
   type StockListItem,
@@ -20,6 +22,7 @@ import { DecisionPanel } from './DecisionPanel';
 import { StockNavigator } from './StockNavigator';
 import { selectSnapshotBar } from './snapshot-state';
 import { useWorkspaceState } from '../../hooks/useWorkspaceState';
+import type { ChartMode } from '../../lib/quote-snapshots';
 
 interface DecisionWorkspaceProps {
   preferredTradeDate: string;
@@ -52,7 +55,7 @@ export function DecisionWorkspace({
   const [detailLoading, setDetailLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
-  const [chartMode, setChartMode] = useWorkspaceState<'daily' | 'intraday'>('decision.mode', 'daily');
+  const [chartMode, setChartMode] = useWorkspaceState<ChartMode>('decision.mode', 'daily');
   const [intradayInterval, setIntradayInterval] = useWorkspaceState<IntradayInterval>('decision.interval', '1m');
   const [listReload, setListReload] = useState(0);
   const [detailReload, setDetailReload] = useState(0);
@@ -122,9 +125,11 @@ export function DecisionWorkspace({
 
   useEffect(() => {
     const controller = new AbortController();
-    setListLoading(true);
+    const cached = getCachedStockList(preferredTradeDate, normalizedQuery);
+    if (cached) setStockItems(cached);
+    setListLoading(!cached);
     setListError(null);
-    const timer = window.setTimeout(() => {
+    const load = () => {
       void getStockList(preferredTradeDate, normalizedQuery, controller.signal)
         .then((items) => {
           if (controller.signal.aborted) return;
@@ -140,7 +145,10 @@ export function DecisionWorkspace({
         .finally(() => {
           if (!controller.signal.aborted) setListLoading(false);
         });
-    }, 180);
+    };
+    // Only typing needs a debounce; initial load, clearing and cache hits are immediate.
+    const timer = normalizedQuery && !cached ? window.setTimeout(load, 180) : undefined;
+    if (timer === undefined) load();
 
     return () => {
       window.clearTimeout(timer);
@@ -150,13 +158,18 @@ export function DecisionWorkspace({
 
   useEffect(() => {
     setActiveDate(null);
+  }, [selectedStockCode]);
+
+  useEffect(() => {
     if (!selectedStockCode) {
       setSelectedStock(null);
       return;
     }
 
     const controller = new AbortController();
-    setDetailLoading(true);
+    const cached = getCachedStockDetail(selectedStockCode, preferredTradeDate);
+    if (cached !== undefined) setSelectedStock(cached);
+    setDetailLoading(cached === undefined);
     setDetailError(null);
 
     void (async () => {
@@ -166,7 +179,7 @@ export function DecisionWorkspace({
         setSelectedStock(response);
       } catch (error) {
         if (controller.signal.aborted || isAbortError(error)) return;
-        setSelectedStock(null);
+        // Retain the last successful bars for this stock during a failed refresh.
         setDetailError(errorText(error, '个股 K 线加载失败'));
       } finally {
         if (!controller.signal.aborted) setDetailLoading(false);
@@ -191,6 +204,9 @@ export function DecisionWorkspace({
         realtimeError={batchRealtime.error}
         onQueryChange={setQuery}
         onSelect={setSelectedStockCode}
+        onPrefetch={(code, signal) => {
+          if (code !== selectedStockCode) void getStockDetail(code, preferredTradeDate, signal).catch(() => undefined);
+        }}
         onRetry={() => setListReload((value) => value + 1)}
       />
       <ProfessionalCandlestickChart
@@ -207,6 +223,7 @@ export function DecisionWorkspace({
         intradayDelayed={intraday.delayed}
         intradayError={intraday.error}
         chartMode={chartMode}
+        quoteTradeDate={intradayTradeDate}
         onChartModeChange={setChartMode}
         intradayInterval={intradayInterval}
         onIntradayIntervalChange={setIntradayInterval}
@@ -215,7 +232,7 @@ export function DecisionWorkspace({
       <DecisionPanel
         stock={currentSelectedStock}
         bar={selectSnapshotBar(currentSelectedStock, activeDate)}
-        loading={detailLoading}
+        loading={detailLoading && !currentSelectedStock}
       />
       {detailError && (
         <div className="workspace-floating-error" role="alert">

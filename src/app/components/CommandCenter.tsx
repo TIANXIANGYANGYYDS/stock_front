@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Command } from 'cmdk';
 import { ArrowUpRight, BarChart3, CandlestickChart, Command as CommandIcon, Moon, Search, X } from 'lucide-react';
-import { getStockList, type StockListItem } from '../lib/api';
+import { getCachedStockList, getStockList, type StockListItem } from '../lib/api';
 import type { WorkspaceView } from './TerminalHeader';
 import { followPointerLight } from '../lib/pointer-light';
 
@@ -17,13 +17,14 @@ export default function CommandCenter({ tradeDate, onClose, onView, onStock, onP
   const query = search.trim();
   useEffect(() => {
     const abort = new AbortController();
-    setStocks([]); setError(''); setLoading(Boolean(query && tradeDate));
+    const cached = tradeDate && query ? getCachedStockList(tradeDate, query) : undefined;
+    setStocks(cached ?? []); setError(''); setLoading(Boolean(query && tradeDate && !cached));
     if (!query || !tradeDate) return;
     const timer = window.setTimeout(() => {
       void getStockList(tradeDate, query, abort.signal).then((items) => { if (!abort.signal.aborted) setStocks(items); })
         .catch(() => { if (!abort.signal.aborted) setError('股票搜索暂不可用，请重新输入后重试。'); })
         .finally(() => { if (!abort.signal.aborted) setLoading(false); });
-    }, 220);
+    }, cached ? 0 : 180);
     return () => { window.clearTimeout(timer); abort.abort(); };
   }, [query, tradeDate]);
   const actions = [

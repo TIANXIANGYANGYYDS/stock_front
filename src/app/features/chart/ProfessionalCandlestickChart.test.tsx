@@ -23,6 +23,7 @@ const chartHarness = vi.hoisted(() => {
   const series: Array<{
     definition: symbol;
     setData: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
     applyOptions: ReturnType<typeof vi.fn>;
     moveToPane: ReturnType<typeof vi.fn>;
   }> = [];
@@ -54,6 +55,7 @@ const chartHarness = vi.hoisted(() => {
         const api = {
           definition,
           setData: vi.fn(),
+          update: vi.fn(),
           applyOptions: vi.fn(),
           createPriceLine: vi.fn(),
           moveToPane: vi.fn(),
@@ -122,6 +124,8 @@ vi.mock('lightweight-charts', () => ({
 }));
 
 import { ProfessionalCandlestickChart } from './ProfessionalCandlestickChart';
+import { QuoteSnapshotChart } from './QuoteSnapshotChart';
+import { mapQuoteSnapshot } from '../../lib/quote-snapshots';
 import { AppearanceProvider, useAppearance } from '../../hooks/useAppearance';
 import { rangeItem, rangeJson, rangeResponse } from '../quant/execution-range-test-fixtures';
 
@@ -256,6 +260,72 @@ afterEach(() => {
 });
 
 describe('ProfessionalCandlestickChart interactions', () => {
+  it('renders morning and afternoon seconds in one chart without a window selector', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-10T15:10:00+08:00'));
+    const fetcher = vi.fn(async (path: string) => {
+      const params = new URL(path, 'http://localhost').searchParams;
+      const timestamp = `2026-08-10T${params.get('start_time')?.slice(0, 5)}:05+08:00`;
+      return new Response(JSON.stringify({ data: [{ code: '600000', price: 12.34, volume: 1000,
+        observed_at: timestamp, market_data_time: timestamp, phase: 'continuous', provider: 'sina' }] }));
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host);
+    const changeMode = vi.fn();
+    await act(async () => root.render(<ProfessionalCandlestickChart stock={stock} chartMode="seconds" quoteTradeDate="2026-08-10" onChartModeChange={changeMode} />));
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('12.34');
+    expect(host.querySelector('.chart-toolbar')).toBeNull();
+    expect(host.querySelector('.intraday-intervals')).toBeNull();
+    const line = chartHarness.series.find(series => series.definition === chartHarness.lineSeries)!;
+    expect(line.setData.mock.lastCall?.[0]).toEqual(expect.arrayContaining([
+      { time: Date.parse('2026-08-10T09:30:05+08:00') / 1000, value: 12.34 },
+      { time: Date.parse('2026-08-10T13:00:05+08:00') / 1000, value: 12.34 },
+      { time: Date.parse('2026-08-10T14:57:05+08:00') / 1000, value: 12.34 },
+    ]));
+    expect(chartHarness.createChart).toHaveBeenCalledTimes(1);
+    expect(chartHarness.createChart.mock.calls[0][1].timeScale.secondsVisible).toBe(true);
+    expect(host.querySelector('[aria-label="秒级行情时间段"]')).toBeNull();
+    expect(host.textContent).toContain('全天走势');
+    expect(chartHarness.timeScale.fitContent).toHaveBeenCalledTimes(1);
+    const minute = [...host.querySelectorAll('button')].find(button => button.textContent?.trim() === '分钟线')!;
+    await act(async () => minute.click());
+    expect(changeMode).toHaveBeenCalledWith('intraday');
+    await act(async () => root.unmount());
+  });
+
+  it('renders raw auction book prices before the minute chart without mixing the previous close into candles', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: [{
+      code: stock.code, observed_at: '2026-08-10T09:20:05+08:00', market_data_time: '2026-08-10T09:20:05+08:00',
+      phase: 'opening_auction_locked', price: 9, bids: [[10.5, 1000]], asks: [[10.6, 1000]], provider: 'tencent',
+      auction_semantics: 'raw_book_unverified',
+    }] }))));
+    const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host);
+    await act(async () => root.render(<ProfessionalCandlestickChart stock={stock} chartMode="intraday" intradayData={intradayResponse} />));
+    const layout = host.querySelector('.intraday-with-auction')!;
+    expect(layout.firstElementChild?.getAttribute('aria-label')).toBe('盘前集合竞价');
+    expect(layout.textContent).toContain('买一 10.50');
+    expect(layout.textContent).toContain('卖一 10.60');
+    const lines = chartHarness.series.filter(series => series.definition === chartHarness.lineSeries);
+    expect(lines.map(series => series.setData.mock.lastCall?.[0][0].value)).toEqual([10.5, 10.6]);
+    const candles = chartHarness.series.find(series => series.definition === chartHarness.candlestickSeries)!;
+    expect(candles.setData.mock.lastCall?.[0]).toHaveLength(2);
+    await act(async () => root.unmount());
+  });
+
+  it('keeps seconds empty and error states explicit and allows retry', async () => {
+    const fetcher = vi.fn().mockRejectedValue(new Error('offline'));
+    vi.stubGlobal('fetch', fetcher);
+    const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host);
+    await act(async () => root.render(<ProfessionalCandlestickChart stock={stock} chartMode="seconds" />));
+    expect(host.textContent).toContain('秒级行情暂不可用');
+    expect(host.querySelector('.stock-price-row')?.textContent).toBe('--');
+    fetcher.mockImplementation(async () => new Response(JSON.stringify({ data: [], possibly_truncated: true })));
+    await act(async () => host.querySelector<HTMLButtonElement>('.snapshot-empty button')!.click());
+    expect(host.textContent).toContain('当日暂无秒级行情');
+    expect(host.textContent).toContain('部分秒级数据可能未完整返回');
+    await act(async () => root.unmount());
+  });
+
   it('draws actual fill markers, opens all same-day details on marker click and clears them when disabled', async () => {
     vi.useFakeTimers();
     const query = { strategyId: 'strategy_1', code: stock.code, startDate: '2026-08-07', endDate: '2026-08-08' };
@@ -475,10 +545,14 @@ describe('ProfessionalCandlestickChart interactions', () => {
     await act(async () => root.unmount());
   });
 
-  it('hides matching daily data while its detail request is loading', async () => {
+  it('keeps matching daily bars, chart instance and zoom while refreshing', async () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
+
+    await act(async () => root.render(<ProfessionalCandlestickChart stock={stock} />));
+    const canvas = host.querySelector('.chart-canvas');
+    chartHarness.setVisibleRange({ from: 0, to: 1 });
 
     await act(async () => root.render(
       <ProfessionalCandlestickChart
@@ -489,12 +563,14 @@ describe('ProfessionalCandlestickChart interactions', () => {
       />,
     ));
 
-    expect(host.querySelector('.stock-price-row')?.textContent).not.toContain('10.80');
-    expect(host.querySelector('.stock-price-row')?.textContent).toContain('--');
-    expect(host.querySelector('.ohlc-legend')?.textContent).not.toContain('2026-08-08');
-    expect(host.querySelector('.indicator-legend-board')?.textContent).not.toContain('10.40');
-    expect(host.querySelector('.stock-live-state')?.textContent).toContain('日线行情加载中');
-    expect(host.querySelector('.chart-canvas-shell')?.textContent).toContain('正在加载个股行情');
+    expect(host.querySelector('.stock-price-row')?.textContent).toContain('10.80');
+    expect(host.querySelector('.ohlc-legend')?.textContent).toContain('2026-08-08');
+    expect(host.querySelector('.indicator-legend-board')?.textContent).toContain('10.40');
+    expect(host.querySelector('.stock-live-state')?.textContent).toContain('日线更新中');
+    expect(host.querySelector('.chart-canvas')).toBe(canvas);
+    expect(chartHarness.createChart).toHaveBeenCalledTimes(1);
+    expect(chartHarness.remove).not.toHaveBeenCalled();
+    expect(chartHarness.getVisibleRange()).toEqual({ from: 0, to: 1 });
 
     await act(async () => root.unmount());
   });
@@ -522,6 +598,9 @@ describe('ProfessionalCandlestickChart interactions', () => {
     await act(async () => minuteButton.click());
     expect(onChartModeChange).toHaveBeenCalledWith('intraday');
     expect(minuteButton.className).not.toContain('is-active');
+    const secondsButton = [...host.querySelectorAll('button')].find(button => button.textContent?.trim() === '秒级')!;
+    await act(async () => secondsButton.click());
+    expect(onChartModeChange).toHaveBeenLastCalledWith('seconds');
 
     await act(async () => root.render(
       <ProfessionalCandlestickChart
@@ -781,7 +860,8 @@ describe('ProfessionalCandlestickChart interactions', () => {
     expect(ma.getAttribute('aria-pressed')).toBe('false');
     expect(host.querySelector('.ohlc-legend')?.textContent).toContain(navigationStock.kline[8].date);
     expect(onActiveDateChange).toHaveBeenLastCalledWith(navigationStock.kline[8].date);
-    expect(chartHarness.series[0].setData.mock.lastCall?.[0].at(-1)).toMatchObject({ close: 10.9 });
+    expect(chartHarness.series[0].setData).toHaveBeenCalledTimes(1);
+    expect(chartHarness.series[0].update).toHaveBeenLastCalledWith(expect.objectContaining({ close: 10.9 }));
     await act(async () => root.unmount());
   });
 
@@ -831,6 +911,7 @@ describe('ProfessionalCandlestickChart interactions', () => {
     expect(chartHarness.createChart).toHaveBeenCalledTimes(1);
     expect(chartHarness.timeScale.fitContent).toHaveBeenCalledTimes(1);
 
+    chartHarness.setVisibleRange({ from: -1, to: 2.5 });
     const nextBar: StockIntradayBar = {
       ...latestIntradayBar,
       timestamp: '2026-08-10T01:33:00Z',
@@ -856,11 +937,19 @@ describe('ProfessionalCandlestickChart interactions', () => {
 
     expect(chartHarness.createChart).toHaveBeenCalledTimes(1);
     expect(chartHarness.timeScale.fitContent).toHaveBeenCalledTimes(1);
-    expect(candleSeries.setData).toHaveBeenLastCalledWith([
-      expect.objectContaining({ time: 1_786_325_460 }),
-      expect.objectContaining({ time: 1_786_325_520 }),
+    expect(candleSeries.setData).toHaveBeenCalledTimes(1);
+    expect(candleSeries.update).toHaveBeenLastCalledWith(
       expect.objectContaining({ time: 1_786_325_580, close: 10.98 }),
-    ]);
+    );
+    expect(chartHarness.getVisibleRange()).toEqual({ from: 0, to: 3.5 });
+    chartHarness.setVisibleRange({ from: -1, to: 0 });
+    await act(async () => root.render(
+      <ProfessionalCandlestickChart stock={stock} realtimeData={realtimeResponse} chartMode="intraday" intradayInterval="1m"
+        intradayData={{ ...intradayResponse, count: 4, items: [
+          { ...nextBar, timestamp: '2026-08-10T01:34:00Z' }, nextBar, latestIntradayBar, earlierIntradayBar,
+        ] }} />,
+    ));
+    expect(chartHarness.getVisibleRange()).toEqual({ from: -1, to: 0 });
 
     await act(async () => root.unmount());
   });
@@ -974,6 +1063,33 @@ describe('ProfessionalCandlestickChart interactions', () => {
     await click('放大K线');
     expect(chartHarness.getVisibleRange()).toEqual({ from: 8, to: 24 });
 
+    await act(async () => root.unmount());
+  });
+
+  it('leaves seconds wheel scrolling to the page and uses the daily-chart controls without resetting on refresh', async () => {
+    const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host);
+    const items = Array.from({ length: 100 }, (_, index) => mapQuoteSnapshot({
+      code: '600000', price: 10 + index / 100,
+      observed_at: new Date(Date.parse('2026-10-08T09:30:00+08:00') + index * 5000).toISOString(),
+      market_data_time: new Date(Date.parse('2026-10-08T09:30:00+08:00') + index * 5000).toISOString(),
+      phase: 'continuous',
+    }));
+    await act(async () => root.render(<QuoteSnapshotChart items={items} datasetKey="600000:2026-10-08:seconds" />));
+    const options = chartHarness.createChart.mock.calls[0][1];
+    expect(options.handleScale).toMatchObject({ mouseWheel: false, pinch: true, axisPressedMouseMove: true, axisDoubleClickReset: true });
+    expect(options.handleScroll).toMatchObject({ mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false });
+    expect(host.querySelectorAll('[aria-label="秒级图导航"] button')).toHaveLength(4);
+    const click = async (label: string) => act(async () => host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!.click());
+    chartHarness.setVisibleRange({ from: 10, to: 30 });
+    await click('查看更早秒级行情'); expect(chartHarness.getVisibleRange()).toEqual({ from: 6, to: 26 });
+    await click('放大秒级图'); expect(chartHarness.getVisibleRange()).toEqual({ from: 8, to: 24 });
+    await click('查看更新秒级行情'); expect(chartHarness.getVisibleRange()).toEqual({ from: 11.2, to: 27.2 });
+    await click('缩小秒级图'); expect(chartHarness.getVisibleRange()).toEqual({ from: 9.2, to: 29.2 });
+    const fitCalls = chartHarness.timeScale.fitContent.mock.calls.length;
+    await act(async () => root.render(<QuoteSnapshotChart items={[...items, { ...items.at(-1)!, observedAt: '2026-10-08T09:38:20+08:00' }]} datasetKey="600000:2026-10-08:seconds" />));
+    expect(chartHarness.timeScale.fitContent).toHaveBeenCalledTimes(fitCalls);
+    expect(chartHarness.getVisibleRange()).toEqual({ from: 9.2, to: 29.2 });
+    expect(chartHarness.createChart).toHaveBeenCalledTimes(1);
     await act(async () => root.unmount());
   });
 

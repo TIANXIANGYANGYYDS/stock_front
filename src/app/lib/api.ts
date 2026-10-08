@@ -1,4 +1,5 @@
 import { LATEST_MARKET_POOL_NAME } from './constants';
+import { createRequestCache } from './request-cache';
 
 const DEFAULT_API_BASE_URL = '/backend-api';
 const NEWS_PAGE_SIZE = 200;
@@ -1838,7 +1839,25 @@ function buildSectorStock(
   };
 }
 
-export async function getStockList(
+const stockListCache = createRequestCache<StockListItem[]>(60_000, 60);
+const stockDetailCache = createRequestCache<SectorStock | null>(60_000, 24);
+const stockQueryKey = (tradeDate: string, query: string) => JSON.stringify([tradeDate, query.trim()]);
+
+export function getCachedStockList(tradeDate: string, keyword = '') {
+  return stockListCache.peek(stockQueryKey(tradeDate, keyword));
+}
+
+export function getCachedStockDetail(code: string, tradeDate: string) {
+  return stockDetailCache.peek(stockQueryKey(tradeDate, code));
+}
+
+export function getStockList(tradeDate: string, keyword = '', signal?: AbortSignal): Promise<StockListItem[]> {
+  return stockListCache.get(stockQueryKey(tradeDate, keyword), sharedSignal => (
+    fetchStockList(tradeDate, keyword, sharedSignal)
+  ), signal);
+}
+
+async function fetchStockList(
   tradeDate: string,
   keyword = '',
   signal?: AbortSignal,
@@ -1876,7 +1895,13 @@ export async function getStockList(
   }));
 }
 
-export async function getStockDetail(
+export function getStockDetail(code: string, tradeDate: string, signal?: AbortSignal): Promise<SectorStock | null> {
+  return stockDetailCache.get(stockQueryKey(tradeDate, code), sharedSignal => (
+    fetchStockDetail(code, tradeDate, sharedSignal)
+  ), signal);
+}
+
+async function fetchStockDetail(
   code: string,
   tradeDate: string,
   signal?: AbortSignal,

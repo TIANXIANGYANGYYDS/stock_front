@@ -5,6 +5,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const apiMocks = vi.hoisted(() => ({
+  getCachedStockList: vi.fn(),
+  getCachedStockDetail: vi.fn(),
   getStockList: vi.fn(),
   getStockDetail: vi.fn(),
 }));
@@ -68,6 +70,8 @@ vi.mock('../chart/ProfessionalCandlestickChart', () => ({
   ProfessionalCandlestickChart: ({
   stockCode,
   stockName,
+  stock,
+  loading,
   realtimeData,
   realtimeLoading,
   realtimeDelayed,
@@ -82,6 +86,8 @@ vi.mock('../chart/ProfessionalCandlestickChart', () => ({
 }: {
     stockCode?: string;
     stockName?: string;
+    stock?: { code: string; tradeDate: string } | null;
+    loading?: boolean;
     realtimeData?: { items: Array<{ code: string; price: number | null }> } | null;
     realtimeLoading?: boolean;
     realtimeDelayed?: boolean;
@@ -95,6 +101,7 @@ vi.mock('../chart/ProfessionalCandlestickChart', () => ({
     onIntradayIntervalChange?: (interval: '60m') => void;
   }) => (
     <section data-testid="chart">
+      日线 {stock?.code}:{stock?.tradeDate};日线加载:{String(loading)};
       身份 {stockCode}:{stockName};快照错误:{realtimeError};分钟错误:{intradayError};
       快照项 {realtimeData?.items.map((item) => `${item.code}:${item.price}`).join('|')}
       :{String(realtimeLoading)}:{String(realtimeDelayed)};
@@ -169,6 +176,28 @@ function setSearchValue(host: HTMLElement, value: string): void {
 }
 
 describe('DecisionWorkspace realtime stock coordination', () => {
+  it('preserves daily data during a date refresh and after its request fails', async () => {
+    const detail = deferred<never>();
+    apiMocks.getStockList.mockResolvedValue([{ code: '600000', name: '浦发银行', tradeDate: '2026-08-10', close: 10 }]);
+    apiMocks.getStockDetail.mockResolvedValueOnce({ code: '600000', name: '浦发银行', tradeDate: '2026-08-10', kline: [] })
+      .mockReturnValueOnce(detail.promise);
+    quoteMocks.useRealtimeStocks.mockReturnValue(pollingState(null));
+    quoteMocks.useRealtimeStock.mockReturnValue(pollingState(null));
+    quoteMocks.useStockIntraday.mockReturnValue(pollingState(null));
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-08-10" />));
+    expect(host.textContent).toContain('日线 600000:2026-08-10');
+    await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-08-11" />));
+    expect(host.textContent).toContain('日线 600000:2026-08-10');
+    expect(host.textContent).toContain('日线加载:true');
+    await act(async () => detail.reject(new Error('网络暂不可用')));
+    expect(host.textContent).toContain('日线 600000:2026-08-10');
+    expect(host.textContent).toContain('日线加载:false');
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('网络暂不可用');
+  });
+
   it('opens an explicitly requested stock and handles another request while already in the workspace', async () => {
     vi.useFakeTimers();
     apiMocks.getStockList.mockResolvedValue([]);
@@ -506,6 +535,7 @@ describe('DecisionWorkspace realtime stock coordination', () => {
     root = createRoot(host);
 
     await act(async () => root?.render(<DecisionWorkspace preferredTradeDate="2026-08-10" />));
+    apiMocks.getStockList.mockClear();
     await act(async () => setSearchValue(host, '平安 '));
     await act(async () => vi.advanceTimersByTime(180));
     await act(async () => await Promise.resolve());

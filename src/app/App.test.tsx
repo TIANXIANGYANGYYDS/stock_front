@@ -151,6 +151,30 @@ describe('App latest trading date gate', () => {
     await act(async () => root.unmount());
   });
 
+  it('keeps the workspace DOM across three minutes of polling and a temporarily empty date', async () => {
+    vi.useFakeTimers();
+    prepareIndices();
+    apiMocks.getLatestMarketDates
+      .mockResolvedValueOnce({ marketTradeDate: '2026-08-11', analysisDate: null })
+      .mockResolvedValueOnce({ marketTradeDate: null, analysisDate: null })
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValue({ marketTradeDate: '2026-08-12', analysisDate: null });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<App />));
+    const workspace = host.querySelector('[data-testid="decision-workspace"]');
+    expect(workspace).not.toBeNull();
+    for (let minute = 0; minute < 3; minute++) {
+      await act(async () => vi.advanceTimersByTimeAsync(60_000));
+      expect(host.querySelector('[data-testid="decision-workspace"]')).toBe(workspace);
+      expect(host.querySelector('.workspace-date-gate')).toBeNull();
+    }
+    expect(apiMocks.getLatestMarketDates).toHaveBeenCalledTimes(4);
+    expect(workspace?.textContent).toContain('2026-08-12');
+    await act(async () => root.unmount());
+  });
+
   it('does not load or mount date-related data before the date endpoint resolves', async () => {
     prepareIndices();
     let resolveDate!: (value: {
