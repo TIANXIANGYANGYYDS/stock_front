@@ -35,6 +35,8 @@ npm run build
 
 前端统一请求 `/backend-api`，Vite 开发服务器会移除该前缀并代理到 `VITE_API_PROXY_TARGET`。在 `.env.local` 配置该变量即可，后端主机不会硬编码在业务代码或 Vite 配置中；开发模式缺少该变量时会给出明确的配置错误。
 
+`npm test` 和 `npm run build` 不要求 `VITE_API_PROXY_TARGET`，部署服务器可以在没有 `.env.local` 的情况下执行测试与构建。生产环境的 `/backend-api` 转发由 Nginx 等实际托管服务配置，Vite 开发代理不参与生产静态站点的请求转发。
+
 日期接口 `GET /api/v1/market/latest-trade-date` 同时提供两类独立日期：`data.latest_trade_date` 是已入库日线的最新交易日，供行情、板块排行、资讯和个股历史日线使用；`data.latest_analysis_date` 是最新盘前分析日期，允许比行情日期晚一天。盘前分析优先请求该显式日期，字段缺失或为空时只回退到 `/morning-analyses/latest`，不会使用行情交易日代替。首次日期请求完成前不会挂载行情、板块排行、盘前分析或资讯查询；随后前端每 60 秒刷新一次，刷新失败时保留最近成功日期。行情日期为空或首次请求失败时会停止后续行情日期请求并展示明确状态，不会使用 `/stats` 或浏览器当天日历日期回退。博主观点属于周末和收盘后仍会更新的实时内容，可独立进入，并按作品实际发布时间筛选，不受最新交易日截断。
 
 当前接入 `Stock_Project` 的只读接口：

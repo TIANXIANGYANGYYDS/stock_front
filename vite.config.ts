@@ -22,7 +22,8 @@ export default defineConfig(({ mode, command }) => {
     process.env.VITE_API_PROXY_TARGET ||
     env.VITE_API_PROXY_TARGET
 
-  if (command === 'serve' && !proxyTarget) {
+  // Vitest also uses Vite's serve command, but unit tests do not need an API proxy.
+  if (command === 'serve' && process.env.VITEST !== 'true' && !proxyTarget) {
     throw new Error('VITE_API_PROXY_TARGET is required for the development proxy')
   }
 
