@@ -18,10 +18,14 @@
   "include": [
     "src/app/features/quant/**/*.ts",
     "src/app/features/quant/**/*.tsx",
+    "src/app/features/sentiment/**/*.ts",
+    "src/app/features/sentiment/**/*.tsx",
     "src/app/lib/api.ts"
   ],
   "exclude": [
     "src/app/features/quant/**/*.test.ts",
-    "src/app/features/quant/**/*.test.tsx"
+    "src/app/features/quant/**/*.test.tsx",
+    "src/app/features/sentiment/**/*.test.ts",
+    "src/app/features/sentiment/**/*.test.tsx"
   ]
 }

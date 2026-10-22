@@ -11,6 +11,7 @@ import {
   Sun,
   Moon,
   Search,
+  Waves,
 } from 'lucide-react';
 import { useAppearance } from '../hooks/useAppearance';
 import { SelectionGroup, SelectionIndicator } from './StudioMotion';
@@ -22,7 +23,7 @@ import {
   quoteTone,
 } from '../lib/realtime-format';
 
-export type WorkspaceView = 'decision' | 'market' | 'news' | 'creators' | 'quant';
+export type WorkspaceView = 'decision' | 'market' | 'news' | 'creators' | 'quant' | 'sentiment';
 
 interface TerminalHeaderProps {
   activeView: WorkspaceView;
@@ -81,6 +82,7 @@ export function TerminalHeader({
   const navigation: Array<{ id: WorkspaceView; label: string; icon: typeof Activity }> = [
     { id: 'decision', label: '决策工作台', icon: CandlestickChart },
     { id: 'quant', label: '量化影子盘', icon: Orbit },
+    { id: 'sentiment', label: '情绪周期', icon: Waves },
     { id: 'market', label: '市场洞察', icon: BarChart3 },
     { id: 'news', label: '实时资讯', icon: Newspaper },
     { id: 'creators', label: '博主观点', icon: MessageSquareQuote },
@@ -89,6 +91,7 @@ export function TerminalHeader({
   const descriptions: Record<WorkspaceView, string> = {
     decision: '从实时行情，到每一个决策细节',
     quant: '追踪策略运行、信号与持仓表现',
+    sentiment: '看清市场情绪，追踪题材与梯队',
     market: '梳理市场主线，发现板块变化',
     news: '聚焦市场资讯与事件影响',
     creators: '读懂关键判断，追踪验证结果',
@@ -136,10 +139,10 @@ export function TerminalHeader({
           }} aria-label={appearance === 'light' ? '切换深色模式' : '切换浅色模式'} title={appearance === 'light' ? '切换深色模式' : '切换浅色模式'}>
             {appearance === 'light' ? <Moon size={17} /> : <Sun size={17} />}
           </button>
-          <div className={`api-state ${dataDelayed || indicesError ? 'is-error' : ''}`}>
+          <div className={`api-state ${activeView !== 'sentiment' && (dataDelayed || indicesError) ? 'is-error' : ''}`}>
             <Radio size={13} />
             <span>
-              {indicesLoading && !hasRealtimeData
+              {activeView === 'sentiment' ? '快照观察' : indicesLoading && !hasRealtimeData
                 ? '连接中'
                 : dataDelayed || indicesError
                   ? '数据延迟'

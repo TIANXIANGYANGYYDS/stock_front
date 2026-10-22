@@ -1,0 +1,314 @@
+短线情绪：前端实际数据需求与接口对齐
+整理日期：2026-10-15
+依据：当前前端源码、已接入 v1.2 契约与现有页面。本文是对齐建议，不表示建议新增的接口已部署，也不替代现有 OpenAPI。
+
+一、先对齐页面要做什么
+
+页面的核心流程：
+1. 看到全市场情绪、涨跌停和最高板，以及左侧题材列表。
+2. 点击一个题材，看到题材情绪、统计、按连板 → 多板 → 涨幅排序的前七只。
+3. 在一张大图中叠加这七只股票当天真实秒级采样，显示开板、封板、回封标注。
+4. 新数据增量更新；午休、收盘待定稿仍能回看，正式定稿后更新结果。
+5. 用户展开时再加载市场统计历史、五板块、市场梯队、全部题材成员、个股详情和更多事件。
+
+前端负责筛选交互、图表坐标和标签排布、展示与缓存。后端负责成员归属、事实有效性、排行、涨停状态、情绪判断、事件识别和收盘状态。
+
+目前最需要解决的两处：
+- 前七已有服务端排序，但股票/板块/状态筛选仍需前端拉完全部成员；应让后端先筛选完整集合、再排序分页。
+- 七股全天图仍调用 /stocks/{code}/snapshots 和 /auctions，按每股多个 15 分钟区间读取。需要一个七股批量全天曲线接口，消除上百次请求及无关盘口字段。
+
+二、接口分工：保留现有七个接口，重点新增一个
+
+统一前缀 /api/v1/sentiment，沿用现有 base URL、鉴权和代理。
+
+接口                                      页面用途                         建议
+GET /dashboard                            总览、题材目录、五板块           保留，首屏不带成员全集或曲线全集
+GET /themes/{theme_id}                     题材统计、前七、分页全部成员     保留，补服务端筛选，明确排序
+GET /stock-series                         指定七只股票的全天曲线与标注     建议新增，当前没有此接口
+GET /timeseries                           市场/题材统计的分钟、日级历史    保留，与个股价格曲线区分
+GET /events                               市场/题材/个股事件分页           保留，用户查看更多时读取
+GET /stocks/{code}                        个股详情                         保留，点击时读取
+GET /ladder                               涨停梯队                         保留，切换“市场梯队”时读取
+GET /stream                               最新发布、元数据、事件更新       保留，不能承载所有股票全天历史
+
+新增路径名称可以由后端确定；功能和下列数据语义需保持。不要另造一套与既有接口含义不同的情绪状态、时间或股票质量字段。
+
+三、所有接口共同遵守的数据约定
+
+REST 继续返回 { meta, data }。
+
+meta 的页面必需信息：
+- scope：all_a / hs_mainboard。
+- trade_date：数据归属交易日，以服务端为准，不由浏览器今天推断。
+- snapshot_id：当前完整发布编号，作为不透明字符串传回。
+- as_of：展示统计、价格和排行的实际观察截止时间。
+- generated_at：发布生成时间，用于识别迟到版本，不能当报价时间。
+- session：opening_auction / continuous / lunch / closing_auction / closed_pending_final / closed。
+- data_mode：observed_snapshots / retained_observation / daily_final。
+- is_final、is_retained、is_stale、age_seconds、coverage。
+- retention_reason：保留或无法保留的原因，可空。
+- finalization：{ status: not_due | pending | finalized, pending_reasons: string[] }。
+- classification_version、rule_version：口径及缓存版本。
+- processed_as_of：已处理的原始归档截止时间；用于判断可读归档范围，不能替代 as_of。
+- included_boards、sample_interval_seconds：范围内板块及目标采样周期。
+
+retained_from_snapshot_id、clock_offset_seconds、clock_basis 等可以保留作诊断；前端不拿保留来源 ID 查询旧成员，不重复叠加时钟偏移。
+
+约束：
+- 股票代码是字符串，保留前导零；market 支持 SH/SZ/BJ。
+- board_type 由后端提供：sh_mainboard、sz_mainboard、chinext、star、bse。前端不靠代码前缀分类。
+- 涨幅及覆盖率等比例统一小数，0.1 表示 10%；价格为元、金额为元、股数为股，时间带时区，展示按 Asia/Shanghai。
+- 业务数字字段即使未知也返回 null，不能返回 0 代替未知；空集合返回 []。字段缺失与业务 null 不应混用。
+- snapshot_id、event_id、cursor 原样传递，不拆分、不跨范围比较末尾序号。
+- 同一组统计/成员/排行属于同一发布；不逐股混合不同观察来“凑覆盖”。
+- 初次关联查询绑定当前 scope、trade_date、snapshot_id；旧发布不可读时明确返回 409。
+- 409 后重取总览并重建关联查询，合并并发恢复、限制重试。422 不拿原错误游标反复重试；404 表示不存在；503 表示暂不可用。
+
+四、页面各部分真正要用的字段
+
+A. 总览 GET /dashboard
+
+保留 data.market、data.boards[]、data.themes[]、data.recent_events、data.unique_stock_count。
+
+市场首屏必需：
+- values：limit_up、limit_down、height、expected、eligible、missing、excluded、coverage。
+- emotion：当前状态和变化，结构见下文。
+
+市场展开区必需：
+- values：chain_count、broken、seal_rate、currently_open_ratio、ever_open_ratio、board_counts。
+- feedback：昨日五类强势群体反馈，结构见下文。
+- missing_reasons：按字段解释缺失。
+
+题材目录每项必需：
+- theme_id、name、member_count、scope_member_count。
+- values：limit_up、height、coverage 及质量计数。
+- emotion。
+- feedback.yesterday_limit_up.return_median。
+
+五板块每项必需：
+- board_type、name、member_count。
+- values：limit_up、limit_down、height、expected、eligible、missing、excluded、coverage。
+- emotion、missing_reasons、feedback.yesterday_limit_up。
+
+只返回板块自己的质量；北交所不足不能让其他四板块全部消失。主板旧历史没有 boards 时允许 []。
+市场值必须是后端按股票去重计算的结果，不能让前端加总题材或平均板块情绪。
+
+共享 Emotion：
+- status：confirmed / pending_confirmation / insufficient_data / unclassified。
+- state、candidate_state、previous_state、state_since。
+- intraday_change：unknown / improving / deteriorating / stable；extreme_tag。
+- evaluated_at、missing_reason、rule_version。
+- evidence[]、counter_evidence[]：展开“依据”时使用；每项至少有 metric、value 和可解释的判断条件。沿用现有字段，不要求前端计算评分。
+- method、validated_for_trading：详情解释口径。
+
+共享 Feedback：
+五个键继续使用 yesterday_limit_up、yesterday_first_board、yesterday_chain、yesterday_high_board、yesterday_broken。
+每组必需 sample_count、observed_count、coverage、open_return_median、return_median、promotion、missing_reason。
+各群体允许重叠，不能由前端自行重新计算。
+
+B. 题材 GET /themes/{theme_id}
+
+默认前七请求：
+?scope=all_a&trade_date=YYYY-MM-DD&snapshot_id=当前发布ID&page=1&page_size=7&sort=board_strength
+
+继续返回题材统计、emotion、feedback、missing_reasons，以及：
+members: { items, total, page, page_size, sort, sort_fields }
+
+必须先在完整成员集合上处理筛选，再排序，再分页；前七必须等于同版本、同条件完整成员列表的前七。
+固定排序：intraday_streak DESC → board_run.limit_up_days DESC → change_ratio DESC → code ASC。
+每一级 null 排在有效值之后，不补零，不用 target_streak 代替 intraday_streak。
+
+建议新增筛选参数（目前题材接口尚未完整支持，需后端确认）：
+- q：股票名称/代码搜索，不是题材名搜索。
+- board_type：上述五板块之一。
+- status：all / touched / limit_up / opened，默认 all。
+- streak：精确实际连板高度；min_streak：最低实际连板高度，两者互斥。用于现有高度筛选及 10 板以上筛选。
+  这里筛选 intraday_streak；与 ladder 的冲板高度口径分别说明。
+- total 返回筛选后的总数；scope_member_count 仍是该范围内题材原始成员数。
+
+成员用于图例与排行的必需字段：
+- code、name、market、board_type。
+- price、change_ratio、source_time。
+- intraday_streak；board_run: { window_days, limit_up_days, label, is_final }。
+- limit_status、is_limit_up、is_sealed、touched_up。
+- limit_up_price，以及计算相对限价参考线所需的 previous_close 或 limit_up_ratio（二者选定一个写入正式契约，不要让前端从四舍五入后的涨幅反推昨收）。新增字段需标注单位。
+- valid、eligible、excluded_reason、is_stale、missing_reasons、is_final。
+
+默认集合按当前 v1.2 保持完整成员，未触板股票参与；有可读报价的 ST 可能进入前七，但必须标记不参与统计。不能后端返回七只后前端悄悄删掉几只。
+如果产品需要“仅参与统计成员”，增加显式 eligible_only 筛选，在取前七之前执行；不要改变当前默认值。该参数属于可选扩展，不是本次必需。
+
+完整成员继续使用同一接口分页，page_size 最大 200。题材关联只说明成员归属，不表示已确认上涨原因。
+当前 data.ladder 可兼容保留；建议后续允许按需返回，普通前七请求不必重复附带庞大的梯队或全部成员。
+
+C. 七股全天图 GET /stock-series —— 当前最缺的接口
+
+建议请求：
+?scope=all_a&trade_date=YYYY-MM-DD&snapshot_id=当前发布ID&codes=000001,600001,...
+
+要求：
+- 一次支持至少七只，首次一个响应返回七股全天；确实需要分页时使用统一游标少量分页，不能让前端继续逐股拆 15 分钟。
+- 股票名单来自上一步 members.items，由前端传 codes。接口不再各自重新选一组“最强七只”。
+- 09:30—15:00 的真实归档采样，包含上午结束、下午开盘、收盘竞价与最终撮合已有记录；午休不补点。
+- 七股图是“个股涨幅的秒级采样叠加”，不是 /timeseries 的题材涨停数量曲线，也不是最近 1/3/5 分钟窗口。
+- 秒级表示使用已有秒级采样，不代表每秒一定有数据。当前采集约 5 秒一次。
+- 按本次发布允许读取的归档范围返回，保留期可有晚于 meta.as_of 的真实归档；不能擅自截掉，也不能读入尚未发布的未来处理结果。
+
+建议 data 结构（字段名待后端确认，语义必须明确）：
+{
+  "series_version": "归档数据版本，不透明字符串",
+  "reset": true,
+  "stocks": [
+    {
+      "code": "000001",
+      "status": "ok | partial | no_data | error",
+      "loaded_through": "本次已扫描到的归档时间或 null",
+      "load_complete": true,
+      "path_complete": false,
+      "missing_reasons": {},
+      "points": [
+        {
+          "point_id": "单股稳定采样键",
+          "observed_at": "实际归档观察时间，带时区",
+          "source_time": "行情来源时间，带时区或 null",
+          "price": "数值或 null，单位元",
+          "previous_close": "该采样使用的真实昨收，数值或 null",
+          "change_ratio": "price / previous_close - 1，数值或 null",
+          "valid": true,
+          "missing_reason": null
+        }
+      ],
+      "annotations": [
+        {
+          "event_id": "真实事件ID",
+          "type": "first_touch | first_seal | open | reseal | limit_down",
+          "observed_at": "事件观察时间",
+          "source_time": "事件来源时间或 null",
+          "timing_basis": "沿用当前事件口径",
+          "anchor_point_id": "可精确匹配的真实采样键；无法匹配则 null"
+        }
+      ]
+    }
+  ],
+  "next_cursor": "后续读取游标或 null",
+  "has_more": false
+}
+上面是类型说明，不是合法的业务行情样例；后端需交付使用真实类型的 OpenAPI 和结构样例。
+
+点和事件的边界：
+- 前端纵轴使用 change_ratio；price/previous_close 用于解释与核验。后台必须定义实际价格依据，不能使用后续报价或当前涨幅倒填历史。
+- 优先在后端统一选择有效来源，返回同一采样时点的规范结果，避免前端每个图都自己挑供应商。
+- 不可用采样返回明确 null/质量原因；没有采集的区间不造点。需要说明断线依据，可用缺口区间或统一的采样间隔规则表达。
+- load_complete 表示“接口已读完本次可读范围”，不表示“全天行情无缺口”；path_complete/质量字段单独说明后者，不能混用。
+- loaded_through 表示扫描进度，不是最后报价时间；最后报价时间取真实点。
+- 事件标注只锚定真实价格点。无法匹配时在事件列表展示，不能猜测价格。annotations 沿用 /events 的同一事件事实，不由曲线涨幅自动生成开板/回封。
+- 某只无数据仍返回它的 code 和状态，不能让另外六只全部失败。未知数值不能补零。
+- 图例的排行快照价格与后续归档中的点可能属于不同时间，分别标时，不互相覆盖。
+
+同一接口支持增量：
+- 后续带 after=next_cursor，只返回新增/修订点和新事件，不每五秒重发全天。
+- reset=true 仅表示本次必须清空这个范围/日期/股票集合的旧曲线及标注；初始全量首批为 true，后续分页和正常增量为 false。
+- points 按 point_id upsert，annotations 按 event_id 去重/upsert，不能单纯追加造成重复。
+- 归档重建、删除旧事实或无法增量恢复时，使旧 series_version/cursor 失效并要求重新全量同步，不能静默保留旧点。
+- 新 snapshot_id 不应默认清空未变化的曲线；初次排序/查询基准绑定发布编号，曲线游标另外绑定归档版本、scope、trade_date、股票集合和查询口径。
+- 正常发布推进时，先取得新的排行/发布编号，再用兼容游标续读；若旧查询基准不再可读可返回 409，但不能每次仅因发布编号推进就要求重新下载全天。
+- has_more=true 表示有积压，需要继续翻页，游标必须推进；false 表示追上当前进度，可保留游标等下一次更新，不代表永久没有新数据。
+- 组内股票集合变化则建立新查询游标；前端可以保留未移出股票的曲线作为等待画面，但不得混淆版本。
+- 曲线游标与 /events 游标不是一回事，不能互传。若标注另行分页，提供明确独立事件游标并说明对应接口。
+
+轻量要求：叠加图不需要每个点的五档盘口、逐笔成交明细、整份原始供应商 JSON。仅详情确有展示时才读取这些数据。
+
+D. 统计走势 GET /timeseries
+
+保留现有参数：scope、trade_date、snapshot_id、interval=1m|1d、start_date、end_date、theme_id。
+- 无 theme_id：市场统计。
+- 有 theme_id：该题材统计。
+- 每个点 timestamp、as_of、snapshot_id、is_final；market/theme.values.limit_up、broken；以及该点自己的质量计数和 missing_reasons。
+- 分钟是该分钟首次实际观察，不是分钟收盘价；日级是正式收盘事实。
+- 保留当天全部已提交点，包括晚于保留观察 as_of 的真实点和 null 点。
+- 最新点无效或顶层 is_stale=true，不能使之前全天有效点消失。
+- 缺口保留断点，不补零、不前向填充。日级定稿不回填分钟曲线。
+- 同一个日期出现分类或规则版本变化时需明确边界，不能混合成一条无说明的统计曲线。
+
+E. 事件 GET /events
+
+保留 scope、trade_date、snapshot_id、theme_id、code、event_type、after、limit。
+响应 items、next_cursor、has_more；每项至少 event_id、type、code（可空）、theme_ids、source_time、observed_at、timing_basis。
+emotion_changed 还需 state、previous_state；有条件可附名称，减少前端查名请求。
+初始只取少量最近事件，完整历史用户按需分页。事件来源时间和观察时间都可展示，事件 ID 去重。
+这一路服务于事件列表和详情；主图七股标注优先随 /stock-series 批量返回，避免另起七条全日事件请求链。
+
+F. 个股详情 GET /stocks/{code}
+
+保留成员行字段，并提供当前页面实际展示的：
+- confirmed_streak_before_today、target_streak、board_run。
+- first_touch_at、first_seal_at、last_open_at、last_reseal_at、observed_open_count。
+- seal_amount_yuan、amount_yuan、turnover_ratio、is_sealed。
+- board_history：近 20 个交易日的 trade_date、is_limit_up、is_final，未知保留 null。
+- themes：theme_id、name；events：事件首批及独立分页游标。
+- source_time、valid、eligible、excluded_reason、is_stale、missing_reasons。
+打开个股时读取，默认首屏不拉七份个股详情。
+
+G. 市场梯队 GET /ladder
+
+保留 theme_id、status、min_streak、board_type、group_by 及公共查询参数。
+继续 groups → levels → stocks，层级包含 height、height_basis、count，股票包含名称、板高/冲板目标、状态、首次观察时间、涨幅。
+同时返回 unique_count 与 membership_count，一股多题材时可以不同。
+它用于市场梯队；不能代替题材完整成员，也不应成为题材大图首屏加载的必要前置请求。
+
+H. 实时通知 GET /stream
+
+保留现有 snapshot / resync / update / heartbeat / unavailable 契约，不要求为本次优化推翻已有 SSE。
+- snapshot/resync 是明确的完整替换；update 是版本/数据变化；heartbeat 仅更新元数据，不能拿来替换整页业务数据。
+- 通知至少能识别最新 scope、trade_date、snapshot_id 和 finalization 状态。
+- 即使 stocks_upsert=[]，新发布或定稿变化也必须通知前端刷新当前题材及走势。
+- stocks_upsert 始终只是观察子集，不能冒充题材完整成员。
+- 收盘待定稿期间保持连接；不要到 15:00 就关闭，否则前端无法得知正式定稿。
+- SSE 只跟随最新交易日；历史页面走 REST，不被实时消息覆盖。
+- 快照推进后前端只更新当前选择的题材，曲线用增量接口；不要迫使 44 个题材各自重拉全天。
+- 目标检查周期可以为 5 秒，但不是逐笔或毫秒推送承诺。
+
+五、收盘状态需要一次讲清楚
+
+连续交易：展示当前发布观察，增量更新。
+午休/收盘竞价/待定稿：可返回同日保留观察；明确真实 as_of、is_retained、retention_reason、finalization。
+正式定稿：is_final=true、finalization.status=finalized、data_mode=daily_final 相互一致，再更新排行与最终事实。
+当天无有效观察：明确 no_same_day_usable_observation，不返回上一日冒充当天。
+
+保留观察的顶层 is_stale=true 只说明它距离现在较旧，不等于其内部每只股票当时都无效。
+逐股 valid/eligible/is_stale 仍描述观察时点事实。ST 排除、真实缺失、局部板块不足都要保留。
+必须能在服务器重启、浏览器刷新、首次访问和切换题材后从 REST 直接恢复，不能依赖前端盘中看过。
+待定稿原因应明确为缺哪种依赖或覆盖不足；前端容忍新增原因代码，不写死一个“必定定稿”的时间。
+
+六、最终页面取数顺序
+
+打开页面：dashboard → 选中题材的 themes(page_size=7) → stock-series(codes=这七只)。
+题材列表与全局情绪来自 dashboard；SSE 建立一个对应范围的连接，不等待全天曲线完成。
+切换题材：取消旧题材相关请求，重新请求该题材前七与批量曲线。
+筛选股票：后端在全部成员中筛选后返回前七，前端不为一组七只下载数百个完整成员。
+新发布：更新总览和当前题材；曲线只续读增量，重复通知合并。
+展开市场总览/详情：再读取统计历史、完整成员分页、梯队和个股详情。
+切换范围/日期：隔离快照、曲线游标、事件游标与缓存，忽略旧请求迟到结果。
+
+七、优先级与验收
+
+第一优先级：批量全天曲线，包含七股状态、真实采样、事件锚点和加载完整性；收盘保留/最终定稿语义继续稳定。
+第二优先级：题材成员服务端筛选；曲线增量及归档版本失效；减少重复大字段和解压。
+其余沿用现有接口，后端可在兼容前提下逐步精简，避免同时引入多套重叠的新接口。
+
+验收应直接对照前端动作：
+1. 首屏取得前七仅一次题材请求；与同版本完整成员排序一致，含未触板股票。
+2. 七股全天首次一个或少量批量请求，不再由前端发上百次时间片请求。
+3. 同日同七股同截止范围，新旧实际点、价格依据、事件匹配一致；允许明确的规范化去重，不允许隐性降采样或丢尾盘。
+4. 正常增量不重新下载全天；重建版本变化时能够清空旧点并恢复。
+5. 收盘后首次进入/刷新能显示；最终数据发布后自动更新，局部缺失不抹掉其他有效数据。
+6. 409 有界恢复；422 停止错误游标重试；快速切换不会串题材、范围或日期。
+7. 报告同一数据集、冷/热缓存下的请求数、响应字节、首批与完整曲线耗时及 p50/p95。建议热缓存完整七股目标约 1 秒、冷缓存约 3 秒；这是协商目标，不是现有服务保证，实际达不到需报告瓶颈。
+
+请后端回复：
+- 哪些现有字段/能力已经满足；哪些需要新增；有何语义差异。
+- stock-series 的最终路径、真实字段类型、初始/分页/增量/重建样例及完整 OpenAPI。
+- 成员筛选参数和 ST/缺行情默认处理规则。
+- 快照一致性与曲线游标在正常更新、收盘保留、正式定稿、归档重建时的行为。
+- 可实际联调的已部署版本与验证结果。
+
+请不要仅提供数据库集合结构或内部任务状态；本次要对齐的是上述页面可直接使用的数据契约。

@@ -87,9 +87,9 @@ export async function getQuoteSnapshots(
   };
 }
 
-export async function getSecondSnapshots(code: string, tradeDate: string, window: SnapshotWindow, signal?: AbortSignal) {
+export async function getSecondSnapshots(code: string, tradeDate: string, window: SnapshotWindow, signal?: AbortSignal, asOf = Date.now()) {
   const snapshots = await getQuoteSnapshots('snapshots', code, tradeDate, window, signal);
-  if (window.end !== '15:00:00') return snapshots;
+  if (window.end !== '15:00:00' || asOf < Date.parse(`${tradeDate}T14:57:00+08:00`)) return snapshots;
   // The backend archives the final three minutes and the 15:00 uncross separately.
   const closing = await getQuoteSnapshots('auctions', code, tradeDate,
     { start: window.start > '14:57:00' ? window.start : '14:57:00', end: '15:00:01', label: '收盘竞价' }, signal);
@@ -102,15 +102,31 @@ export async function getSecondSnapshots(code: string, tradeDate: string, window
 }
 
 /** Fetch API-sized batches while exposing one continuous trading-day dataset. */
-export function createTradingDaySnapshotLoader(code: string, tradeDate: string) {
+export function createTradingDaySnapshotLoader(code: string, tradeDate: string, options: {
+  now?: () => number; onProgress?: (data: QuoteSnapshotResponse) => void;
+  concurrency?: 1 | 2; request?: typeof getSecondSnapshots;
+} = {}) {
+  const now = options.now ?? Date.now;
+  const request = options.request ?? getSecondSnapshots;
   const cache = new Map<string, { data: QuoteSnapshotResponse; final: boolean }>();
+  let merged: QuoteSnapshotResponse | undefined;
   // Include the morning session's endpoint; every individual API request remains <= 15 minutes.
   const windows = [...SNAPSHOT_WINDOWS, { start: '11:30:00', end: '11:30:01', label: '午间收盘' }]
     .sort((a, b) => a.start.localeCompare(b.start));
   const timestamp = (time: string) => Date.parse(`${tradeDate}T${time}+08:00`);
+  const readCache = (): QuoteSnapshotResponse => {
+    if (merged) return merged;
+    const batches = [...cache.values()].map(entry => entry.data);
+    const items = [...new Map(batches.flatMap(batch => batch.items).map(row => [`${row.observedAt}:${row.provider}`, row])).values()]
+      .sort((a, b) => Date.parse(a.observedAt) - Date.parse(b.observedAt));
+    const latest = batches.map(batch => batch.lastObservedAt).filter(time => Number.isFinite(Date.parse(time)))
+      .sort((a, b) => Date.parse(a) - Date.parse(b)).at(-1) ?? '';
+    return merged = { code, tradeDate, startTime: TRADING_DAY_WINDOW.start, endTime: TRADING_DAY_WINDOW.end,
+      items, lastObservedAt: latest, possiblyTruncated: batches.some(batch => batch.possiblyTruncated) };
+  };
   return async (signal: AbortSignal): Promise<QuoteSnapshotResponse> => {
-    const pending = windows.filter(window => timestamp(window.start) <= Date.now() && !cache.get(window.start)?.final);
-    // Decompressing quote batches is expensive on the backend. Limit concurrent reads to two.
+    const pending = windows.filter(window => timestamp(window.start) <= now() && !cache.get(window.start)?.final);
+    // A single-stock chart uses two readers; multi-stock callers supply a shared slice queue.
     let index = 0;
     const worker = async () => {
       while (index < pending.length) {
@@ -122,8 +138,8 @@ export function createTradingDaySnapshotLoader(code: string, tradeDate: string) 
           const cursor = shanghaiDateTime(new Date(previous.lastObservedAt));
           if (cursor.date === tradeDate && cursor.time > start && cursor.time < window.end) start = cursor.time;
         }
-        const requestedAt = Date.now();
-        const next = await getSecondSnapshots(code, tradeDate, { ...window, start }, signal);
+        const requestedAt = now();
+        const next = await request(code, tradeDate, { ...window, start }, signal, requestedAt);
         signal.throwIfAborted();
         const incremental = start !== window.start;
         const items = new Map((incremental ? previous?.items ?? [] : []).map(row => [`${row.observedAt}:${row.provider}`, row]));
@@ -131,21 +147,17 @@ export function createTradingDaySnapshotLoader(code: string, tradeDate: string) 
         cache.set(window.start, {
           data: { ...next, startTime: window.start, items: [...items.values()],
             lastObservedAt: next.lastObservedAt || (incremental ? previous?.lastObservedAt ?? '' : '') },
-          final: requestedAt >= timestamp(window.end) + 30000,
+          final: !next.possiblyTruncated && requestedAt >= timestamp(window.end) + 30000,
         });
+        merged = undefined;
+        options.onProgress?.(readCache());
       }
     };
-    const results = await Promise.allSettled([worker(), worker()]);
+    const results = await Promise.allSettled(Array.from({ length: options.concurrency ?? 2 }, worker));
     signal.throwIfAborted();
     const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (failure) throw failure.reason;
-    const batches = [...cache.values()].map(entry => entry.data);
-    const items = [...new Map(batches.flatMap(batch => batch.items).map(row => [`${row.observedAt}:${row.provider}`, row])).values()]
-      .sort((a, b) => Date.parse(a.observedAt) - Date.parse(b.observedAt));
-    const latest = batches.map(batch => batch.lastObservedAt).filter(time => Number.isFinite(Date.parse(time)))
-      .sort((a, b) => Date.parse(a) - Date.parse(b)).at(-1) ?? '';
-    return { code, tradeDate, startTime: TRADING_DAY_WINDOW.start, endTime: TRADING_DAY_WINDOW.end,
-      items, lastObservedAt: latest, possiblyTruncated: batches.some(batch => batch.possiblyTruncated) };
+    return readCache();
   };
 }
 

@@ -15,6 +15,7 @@ export type RankingWindow = 'hour' | 'day' | '3day' | '7day';
 export interface RequestOptions {
   signal?: AbortSignal;
   cache?: RequestCache;
+  headers?: HeadersInit;
 }
 
 export class ApiRequestError extends Error {
@@ -38,13 +39,16 @@ function buildQuery(params?: Record<string, QueryValue>): string {
   return query ? `?${query}` : '';
 }
 
-export async function requestJson<T>(
+/** Shared transport for JSON and streaming endpoints, including the configured base/proxy. */
+export async function requestResponse(
   path: string,
   params?: Record<string, QueryValue>,
   options: RequestOptions = {},
-): Promise<T> {
+): Promise<Response> {
+  const headers = new Headers({ Accept: 'application/json' });
+  new Headers(options.headers).forEach((value, name) => headers.set(name, value));
   const response = await fetch(`${API_BASE_URL}${path}${buildQuery(params)}`, {
-    headers: { Accept: 'application/json' },
+    headers,
     signal: options.signal,
     ...(options.cache ? { cache: options.cache } : {}),
   });
@@ -63,7 +67,11 @@ export async function requestJson<T>(
     );
   }
 
-  return (await response.json()) as T;
+  return response;
+}
+
+export async function requestJson<T>(path: string, params?: Record<string, QueryValue>, options: RequestOptions = {}): Promise<T> {
+  return (await (await requestResponse(path, params, options)).json()) as T;
 }
 
 function toText(value: unknown, fallback = ''): string {

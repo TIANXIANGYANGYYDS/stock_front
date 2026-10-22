@@ -429,7 +429,7 @@ input::placeholder { color: var(--terminal-faint); opacity: 1; }
   .studio-sidebar { display: contents; }
   .studio-sidebar .terminal-brand { position: absolute; top: 17px; left: 16px; padding: 0; }
   .studio-sidebar .terminal-brand > div:last-child, .studio-nav-label, .studio-sidebar-footer { display: none; }
-  .studio-sidebar .terminal-nav { position: fixed; inset: auto 0 0; z-index: 60; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: stretch; height: calc(65px + env(safe-area-inset-bottom)); padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); gap: 4px; border-top: 1px solid var(--terminal-border); background: var(--studio-glass); backdrop-filter: blur(20px); overflow: visible; }
+  .studio-sidebar .terminal-nav { position: fixed; inset: auto 0 0; z-index: 60; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: stretch; height: calc(65px + env(safe-area-inset-bottom)); padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); gap: 4px; border-top: 1px solid var(--terminal-border); background: var(--studio-glass); backdrop-filter: blur(20px); overflow: visible; }
   .studio-sidebar .terminal-nav button { min-height: 48px; height: 100%; flex-direction: column; justify-content: center; gap: 4px; padding: 3px 0; border: 0; font-size: 10px; }
   .studio-sidebar .terminal-nav button.is-active { color: var(--terminal-accent); background: var(--terminal-accent-soft); box-shadow: none; }
   .studio-nav-arrow { display: none; }

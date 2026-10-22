@@ -74,6 +74,10 @@ vi.mock('./features/quant/QuantWorkspace', () => ({
   QuantWorkspace: () => <main data-testid="quant-workspace">quant workspace</main>,
 }));
 
+vi.mock('./features/sentiment/SentimentWorkspace', () => ({
+  SentimentWorkspace: () => <main data-testid="sentiment-workspace">sentiment demo</main>,
+}));
+
 import App from './App';
 
 afterEach(() => {
@@ -86,6 +90,19 @@ afterEach(() => {
 });
 
 describe('App latest trading date gate', () => {
+  it('opens the sentiment route without requiring backend trading dates', async () => {
+    prepareIndices();
+    apiMocks.getLatestMarketDates.mockRejectedValue(new Error('backend offline'));
+    window.history.replaceState({}, '', '/sentiment');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<App />));
+    expect(host.querySelector('[data-testid="sentiment-workspace"]')).not.toBeNull();
+    expect(host.querySelector('.workspace-date-gate')).toBeNull();
+    await act(async () => root.unmount());
+  });
+
   it('restores the workspace from browser history and lets the user retry the date gate', async () => {
     prepareIndices();
     apiMocks.getLatestMarketDates.mockRejectedValueOnce(new Error('暂时断网'))

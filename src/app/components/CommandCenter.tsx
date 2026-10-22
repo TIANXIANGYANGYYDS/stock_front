@@ -30,6 +30,7 @@ export default function CommandCenter({ tradeDate, onClose, onView, onStock, onP
   const actions = [
     { id: 'panorama', label: '活跃股速览 · 比涨跌、查排名', keywords: '3d hangqing panorama 行情 成交额 筛选', Icon: BarChart3, run: onPanorama },
     ...([{ id: 'decision', label: '决策工作台', keywords: '股票 k线 juece' }, { id: 'quant', label: '量化影子盘', keywords: 'lianghua quant 策略' },
+      { id: 'sentiment', label: '情绪周期', keywords: 'qingxu sentiment 题材 涨停 梯队' },
       { id: 'market', label: '市场洞察', keywords: 'shichang market' }, { id: 'news', label: '实时资讯', keywords: '新闻 news zixun' },
       { id: 'creators', label: '博主观点', keywords: 'bozhu creators 分析' }] as const)
       .map((item) => ({ ...item, Icon: ArrowUpRight, run: () => onView(item.id) })),

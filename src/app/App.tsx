@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps } from 'react';
+﻿import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router';
 import { TerminalHeader, type WorkspaceView } from './components/TerminalHeader';
 import { DecisionWorkspace } from './features/decision/DecisionWorkspace';
@@ -6,6 +6,7 @@ import { MarketInsightsView } from './features/market/MarketInsightsView';
 import { NewsIntelligenceView } from './features/news/NewsIntelligenceView';
 import { CreatorInsightsView } from './features/creators/CreatorInsightsView';
 import { QuantWorkspace } from './features/quant/QuantWorkspace';
+import { SentimentWorkspace } from './features/sentiment/SentimentWorkspace';
 import {
   getLatestMarketDates,
 } from './lib/api';
@@ -56,6 +57,7 @@ function AppContent() {
   const storedView = location.state?.workspaceView;
   const activeView: WorkspaceView = /^\/quant(?:\/|$)/.test(location.pathname)
     ? 'quant'
+    : /^\/sentiment(?:\/|$)/.test(location.pathname) ? 'sentiment'
     : ['market', 'news', 'creators'].includes(storedView) ? storedView : 'decision';
   const [marketTradeDate, setMarketTradeDate] = useState<string>();
   const [analysisDate, setAnalysisDate] = useState<string | null>(null);
@@ -106,14 +108,14 @@ function AppContent() {
 
   const handleViewChange = (view: WorkspaceView) => {
     if (view === activeView) return;
-    navigate(view === 'quant' ? '/quant' : '/', { state: { workspaceView: view } });
+    navigate(view === 'quant' ? '/quant' : view === 'sentiment' ? '/sentiment' : '/', { state: { workspaceView: view } });
   };
   const openStock = (code: string) => {
     closeUtility();
     navigate('/', { state: { workspaceView: 'decision', stockCode: code } });
   };
 
-  const requiresMarketDate = activeView !== 'creators' && activeView !== 'quant';
+  const requiresMarketDate = activeView !== 'creators' && activeView !== 'quant' && activeView !== 'sentiment';
 
   return (
     <div className="stock-terminal studio-shell" data-workspace={activeView}>
@@ -128,6 +130,7 @@ function AppContent() {
       <div key={activeView} className="terminal-main">
         {activeView === 'creators' && <CreatorInsightsView />}
         {activeView === 'quant' && <QuantWorkspace />}
+        {activeView === 'sentiment' && <SentimentWorkspace />}
         {requiresMarketDate && tradeDateLoading && (
           <main className="workspace-date-gate terminal-panel">
             <div className="terminal-empty"><span className="loading-pulse" />正在解析 Stock_Project 最新交易日...</div>

@@ -51,6 +51,17 @@ describe('quote snapshot API', () => {
       expect(duration).toBeLessThanOrEqual(900000);
     }
   });
+  it('waits for the observation clock to enter closing auction before reading its archive', async () => {
+    const fetcher = vi.fn().mockImplementation(async () => json({ data: [] }));
+    vi.stubGlobal('fetch', fetcher);
+    const signal = new AbortController().signal;
+    await getSecondSnapshots('002580', '2026-10-08', SNAPSHOT_WINDOWS[15], signal, Date.parse('2026-10-08T14:50:00+08:00'));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0][0]).toContain('/snapshots?');
+    await getSecondSnapshots('002580', '2026-10-08', SNAPSHOT_WINDOWS[15], signal, Date.parse('2026-10-08T14:57:05+08:00'));
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher.mock.calls[2][0]).toContain('/auctions?');
+  });
 });
 
 describe('quote snapshot chart data', () => {
@@ -80,6 +91,27 @@ describe('quote snapshot chart data', () => {
 });
 
 describe('whole-day snapshots', () => {
+  it('uses the sentiment observation clock rather than requesting future server windows', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-15T13:05:00+08:00'));
+    const fetcher = vi.fn().mockImplementation(async () => json({ data: [] }));
+    vi.stubGlobal('fetch', fetcher);
+    const load = createTradingDaySnapshotLoader('002580', '2026-10-15', { now: () => Date.parse('2026-10-15T11:29:58+08:00') });
+    await load(new AbortController().signal);
+    const windows = fetcher.mock.calls.map(([path]) => new URL(path, 'http://localhost').searchParams.get('start_time'));
+    expect(windows).toHaveLength(8);
+    expect(windows.at(-1)).toBe('11:15:00');
+  });
+
+  it('does not freeze a truncated archive as a completed window', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(json({ data: [raw()], possibly_truncated: true }))
+      .mockResolvedValueOnce(json({ data: [] })).mockResolvedValueOnce(json({ data: [raw()] })).mockResolvedValueOnce(json({ data: [] }));
+    vi.stubGlobal('fetch', fetcher);
+    const load = createTradingDaySnapshotLoader('002580', '2026-10-08', { now: () => Date.parse('2026-10-08T09:46:00+08:00') });
+    expect((await load(new AbortController().signal)).possiblyTruncated).toBe(true);
+    expect((await load(new AbortController().signal)).possiblyTruncated).toBe(false);
+    expect(fetcher.mock.calls.filter(([path]) => path.includes('start_time=09%3A30%3A00'))).toHaveLength(2);
+  });
+
   it('merges morning, afternoon and closing observations into one sorted day within API limits', async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-08T15:10:00+08:00'));
     let active = 0; let peak = 0;

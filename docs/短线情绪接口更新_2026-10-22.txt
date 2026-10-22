@@ -1,0 +1,657 @@
+请根据以下后端接口契约，对接或更新现有项目的短线情绪功能。页面布局、组件拆分、交互方式、状态管理和具体代码实现由你结合现有前端项目自行决定。
+
+以下内容仅说明后端已经提供的接口、字段和业务语义，不规定前端实现方案。所有必要接口信息均在本提示词中。
+
+一、基础约定
+
+接口前缀：
+/api/v1/sentiment
+
+沿用项目现有 API 地址与代理配置。后端监听端口为 8100，127.0.0.1 仅表示调用机器本机，不作为远程浏览器的服务器地址。
+
+所有接口均使用 GET：
+- 六个普通查询接口返回 application/json。
+- /stream 返回 text/event-stream，即 SSE。
+
+普通成功响应统一为：
+{
+  "meta": { ... },
+  "data": { ... }
+}
+
+六个普通查询接口共同支持以下可选参数：
+- scope：all_a 或 hs_mainboard，默认 all_a。
+  - all_a：沪深主板、创业板、科创板、北交所。
+  - hs_mainboard：仅沪深主板。
+- trade_date：YYYY-MM-DD。省略时读取最新已发布交易日，不保证等于今天。
+- snapshot_id：绑定某次已发布快照，最长 64 字符。通常来自总览接口。
+
+snapshot_id 是不透明字符串，原样传递即可。
+后端只提供每个范围、每个交易日的最新完整发布版本；旧 snapshot_id 不等于可查询的历史版本句柄。
+绑定版本已经更新时返回 409，需要取得新总览中的 snapshot_id 后再查询关联数据。
+两个 scope 的快照、事件游标和时间线相互独立。
+
+单位与空值：
+- 价格：人民币元。
+- 成交额、封单金额：人民币元。
+- 股票数量、封单量：股。
+- change_ratio、turnover_ratio、coverage，以及 values 中的比例字段使用小数，例如 0.1 表示 10%。
+- emotion.facts 中 B、U、D3、D5、Q10 等占比使用 0—100；M 等使用后端标准化 r10 口径，不应统一再乘 100。
+- 时间为带时区的 ISO 8601，可能含 +08:00 或 +00:00。
+- 来源时间已经由后端处理，不要再对行情时间手工加减服务器约五分钟的时差。
+- null 表示未知，不等于 0；布尔条件 null 表示无法判断，不等于 false。
+- 股票代码始终作为六位字符串处理，保留前导零。
+- 字段可能扩展；历史版本可能缺少新版扩展字段。
+
+二、公共 meta
+
+主要字段：
+
+trade_date：当前返回数据所属交易日。
+scope：all_a / hs_mainboard。
+snapshot_id：本次完整发布标识。
+as_of：当前展示行情的实际截止时间。
+generated_at：本次发布生成时间。
+processed_as_of：后台已经处理到的原始观察时间，可能晚于展示的 as_of。
+session：
+  opening_auction / continuous / lunch /
+  closing_auction / closed_pending_final / closed。
+is_final：是否已经完成日级事实定稿。
+is_retained：是否正在展示同日最后有效的完整观察。
+retention_reason：保留或无法保留观察的原因，可为 null。
+retained_from_snapshot_id：保留观察的来源标识，仅用于溯源，不作为详情查询绑定。
+is_stale：观察是否已经过旧。
+age_seconds：观察相对查询时刻的年龄。
+coverage：有效统计家数 / 应统计家数，可为 null。
+classification_version：题材分类版本。
+rule_version：综合计算规则版本，当前新版为：
+  short-sentiment-market-v4.2-theme-v2.4
+environment_interval_seconds：环境判断周期，当前为 300。
+event_rule_version：新增价格行为规则版本，当前为 price-behavior-v1。
+sample_interval_seconds：目标采集周期，当前为 5。
+price_basis：当前为 raw，表示原始不复权价格。
+included_boards：当前范围包含的交易板块。
+clock_offset_seconds / clock_basis：后端时间校准信息。
+data_mode：
+  observed_snapshots / retained_observation / daily_final。
+finalization：
+{
+  "status": "not_due | pending | finalized",
+  "pending_reasons": ["原因代码"]
+}
+popularity：整份同花顺榜单的可用状态，见后面的热度结构。
+
+重要语义：
+- is_retained=true 不代表正式收盘。
+- 盘后 is_final 仍可能是 false。
+- is_stale=true 不表示已经保存的成员、历史曲线失去查询价值。
+- 正式收盘 as_of 可以是 15:00，而 emotion.evaluated_at 仍为最后真实环境窗口 14:55。
+- 行情时点、环境判断时点、后台处理进度是不同字段。
+
+三、公共统计结构 Stats
+
+市场、交易板块、题材均包含以下结构：
+{
+  "values": { ... },
+  "feedback": { ... },
+  "emotion": { ... },
+  "missing_reasons": { "指标名": "原因" }
+}
+
+市场和题材还提供 recent_activity。
+
+values 常用字段：
+- expected：应统计数量。
+- eligible：实际有效统计数量。
+- missing：缺失数量。
+- excluded：被排除数量。
+- coverage：有效覆盖率。
+- limit_up / limit_down：涨停、跌停家数。
+- limit_up_ratio：涨停家数占比。
+- touch_up：当日已触板家数。
+- broken：已触板但当前未处于涨停价的家数。
+- seal_rate：当前涨停家数 / 已触板家数，不要求所有股票都有完整盘口。
+- currently_open_ratio：当前打开家数 / 已触板家数。
+- ever_open_ratio：曾观察到开板的比例。
+- advancing / declining / flat：上涨、下跌、平盘家数。
+- advancing_ratio：上涨占比。
+- return_median：有效成员原始涨幅中位数。
+- amount_yuan：成交额。
+- up_over_5 / down_over_5：涨超 5%、跌超 5% 家数。
+- drawdown_8：回撤至少 8% 的家数。
+- height：最高连续板高度。
+- chain_count：连板股数量。
+- unknown_streak：连续板高度未知数量。
+- board_counts：按板位统计的对象，键包括 "1" 至 "9"、"10_plus"。
+- one_to_two / two_to_three：一进二、二进三比例。
+
+feedback 是昨日固定股票组的反馈：
+- yesterday_limit_up：昨日涨停组。
+- yesterday_first_board：昨日首板组。
+- yesterday_chain：昨日连板组。
+- yesterday_high_board：昨日至少 5 板组。
+- yesterday_broken：昨日炸板组。
+
+每组包含：
+sample_count、observed_count、coverage、
+return_median、open_return_median、
+advancing_count、loss_over_5_count、limit_down_count、
+promotion、missing_reason。
+
+recent_activity：
+- window_seconds：当前为 300。
+- basis：observed_events。
+- 其余字段以个股事件类型为键，值为最近窗口观察次数。
+- 它不是全天事件总数。
+
+四、环境 emotion
+
+大盘与题材使用两套不同定义。
+
+大盘阶段从好到坏：
+沸点 > 过热 > 微热 > 微冷 > 过冷 > 冰点。
+冰点是最低值。
+
+题材阶段：
+启动、主升、分歧、高潮、退潮、整理。
+这六个名称不是一套从好到坏的线性排序。
+
+板位口径：
+- 首板：1 板。
+- 中板：2—4 板。
+- 高板：5 板及以上。
+
+emotion 字段：
+- state：已经确认的阶段，可为 null。
+- candidate_state：正在累计确认的候选阶段，可为 null。
+- status：
+  confirmed / pending_confirmation /
+  insufficient_data / unclassified。
+- state_since：当前阶段起点。
+- previous_state：上一个阶段。
+- intraday_change：unknown / improving / deteriorating / stable。
+- evaluated_at：最后判断时间。
+- evaluation_interval_seconds：当前为 300。
+- rule_version：当前对象使用的具体规则版本。
+- method：计算方式标识。
+- validated_for_trading：当前为 false。
+- extreme_tag：极端标记，可为 null。
+- support：当前保持证据是否成立，true / false / null。
+- support_status：保持证据的文字解释。
+- last_supported_at：最后获得支持的时间。
+- support_unknown_reasons：支持证据未知的原因数组。
+- entry：各进入条件的三态结果，值为 true / false / null。
+- hold：各保持条件的三态结果。
+- facts：判断时使用的数值。
+- evidence / counter_evidence：判断及反向证据数组。
+- candidates：候选的累计窗口、要求窗口、阻挡原因等。
+- data_quality：窗口质量诊断。
+- 大盘还可能包含 structure，描述统计主线及候选。
+- 题材还可能包含 cycle_id、startup_cohort、high_cohort、exit_evidence 等周期信息。
+- 收盘沿用最后盘中环境时可能包含 is_carried_to_close=true。
+
+data_quality 当前可能包含：
+{
+  "policy": "market_coverage_with_local_diagnostics_v1",
+  "minimum_coverage": 0.98,
+  "window_minimum_coverage": 0.997,
+  "board_minimum_coverage": {
+    "sh_mainboard": 0.999,
+    "sz_mainboard": 1.0,
+    "chinext": 0.997,
+    "star": 1.0,
+    "bse": 0.969
+  },
+  "incomplete_directions": []
+}
+以上数值仅展示结构。
+
+语义：
+- state 才是已确认阶段，candidate_state 不代表已切换。
+- 已有 state 时，support 仍可能为 null，表示沿用阶段但当前支持证据未知。
+- state=null 表示尚未建立可用阶段，不能当作“整理”。
+- boards 中的交易所板块不套用题材阶段，通常 status=unclassified。
+- 未分类股票集合也不强行判定题材阶段。
+- 环境每五分钟判断一次，不随每次行情刷新重新定义阶段。
+
+五、公共股票结构 Stock
+
+以下股票结构用于题材成员、总览 top_stocks、梯队、个股详情和 SSE 股票对象。
+
+基础行情：
+code、name、market、board_type、
+price、previous_close、change_ratio、
+amount_yuan、turnover_ratio、open_change_ratio、
+drawdown_from_high_ratio。
+
+涨跌停与盘口：
+- limit_up_price / limit_down_price：当日限价。
+- limit_rule：限价依据。
+- limit_status：
+  unknown / sealed / at_limit / opened / not_touched。
+- is_limit_up / is_limit_down / is_sealed：可为 null。
+- touched_up：当日是否已触板。
+- seal_amount_yuan / seal_volume_shares：可为 null。
+- observed_open_count：实际观察到的开板次数。
+- first_touch_at / first_seal_at：
+  首次观察到触板、盘口封板的来源时间。
+- last_reseal_at / last_open_at：
+  最近观察到回封、开板的来源时间。
+
+板位：
+- confirmed_streak_before_today：前一交易日收盘确认的连续板高度。
+- intraday_streak：当前观察时已实现的连续板高度；开板时为 0，未知为 null。
+- target_streak：当天冲击目标高度。
+- board_run：
+{
+  "window_days": 5,
+  "limit_up_days": 4,
+  "label": "5天4板",
+  "is_final": true
+}
+  可能额外带 rule。数值和 label 可为 null。
+- 多日多板标签与连续板高度是不同字段。
+- intraday_streak 不能用 target_streak 替代。
+
+题材与质量：
+theme_ids、attributed_theme_id、attribution_basis、
+source_time、received_at、provider、
+valid、eligible、excluded_reason、is_stale、
+missing_reasons、timing_basis、path_complete、
+status_basis、is_final。
+
+其中：
+- eligible 表示是否参与统计。
+- 成员接口仍可能包含被排除或缺行情股票。
+- attributed_theme_id 当前可能为 null，不代表已经提供上涨归因。
+- path_complete=false 表示快照观察不等于逐笔完整路径。
+- observed_open_count=0 不保证市场全天实际从未开板。
+
+六、同花顺热度 popularity
+
+每只股票的 popularity：
+{
+  "provider": "ths",
+  "status": "ranked",
+  "rank": 22,
+  "heat": 199092,
+  "rank_change": 0,
+  "snapshot_id": "榜单标识",
+  "observed_at": "带时区的时间",
+  "age_seconds": 8.156,
+  "max_age_seconds": 900
+}
+
+status：
+- ranked：榜单中有该股票。
+- not_ranked：当时有效的前 100 榜单中没有该股票。
+- missing：没有当时可用的榜单。
+- stale：榜单超过有效时间。
+
+rank 为排名，数字越小越靠前。
+heat 为供应商热度原值。
+rank_change 为供应商原始变化字段，可能不是统一数值类型。
+未上榜、缺失、过期时，rank 和 heat 为 null。
+
+meta.popularity 描述整份榜单：
+provider、status、snapshot_id、observed_at、
+age_seconds、max_age_seconds。
+这里的 status 为 available / missing / stale。
+
+热度使用与行情同交易日、采集时间不晚于 meta.as_of 的最近榜单，并随行情快照冻结。
+有效期为 900 秒。
+历史结果不使用今天的榜单补填。
+
+七、GET /dashboard
+
+完整路径：
+/api/v1/sentiment/dashboard
+
+参数：公共参数。
+
+data：
+{
+  "market": Stats,
+  "boards": [BoardStats],
+  "themes": [DashboardThemeStats],
+  "recent_events": [Event],
+  "unique_stock_count": 5577
+}
+
+BoardStats 在 Stats 上增加：
+board_type、name、member_count。
+
+board_type 枚举：
+sh_mainboard、sz_mainboard、chinext、star、bse。
+
+DashboardThemeStats 在 Stats 上增加：
+theme_id、name、member_count、scope_member_count、
+membership_basis、historical_membership_verified、
+top_stocks。
+
+top_stocks 为按默认成员排序返回的前五只完整 Stock。
+theme_id 从此接口读取，不能用中文名称代替题材 ID。
+
+题材默认按：
+涨停数量降序 → 涨停占比降序 → theme_id。
+这只是返回顺序，不表示已确认主线。
+
+recent_events 返回最近 20 条事件，按事件 ID 倒序。
+unique_stock_count 为观测股票去重数。
+题材之间允许一股多归属，题材计数不能直接求和当作市场去重数。
+
+八、GET /themes/{theme_id}
+
+完整路径：
+/api/v1/sentiment/themes/{theme_id}
+
+除公共参数外：
+- page：默认 1，最小 1。
+- page_size：默认 50，范围 1—200。
+- sort：board_strength / change_ratio，默认 board_strength。
+
+data 包含题材 Stats、题材身份字段，以及：
+{
+  "members": {
+    "total": 100,
+    "page": 1,
+    "page_size": 7,
+    "sort": "board_strength",
+    "sort_fields": [
+      "intraday_streak:desc",
+      "board_run.limit_up_days:desc",
+      "popularity.rank:asc:nulls_last",
+      "change_ratio:desc",
+      "code:asc"
+    ],
+    "items": [Stock]
+  },
+  "ladder": LadderData
+}
+
+默认 board_strength 排序：
+1. intraday_streak 降序。
+2. board_run.limit_up_days 降序。
+3. popularity.rank 升序。
+4. change_ratio 降序。
+5. code 升序。
+
+每个字段的 null 位于该字段有效值之后。
+热度排序位于连板、多日多板之后。
+sort=change_ratio 时按涨幅降序、代码升序。
+
+前七请求示例：
+/api/v1/sentiment/themes/{theme_id}?scope=all_a&page=1&page_size=7&sort=board_strength
+
+同一快照下，详情成员前五与总览该题材 top_stocks 一致。
+成员包含未触板股票，不等同涨停梯队的股票子集。
+
+九、GET /stocks/{code}
+
+完整路径：
+/api/v1/sentiment/stocks/{code}
+
+code 必须是六位股票代码。
+参数：公共参数。
+
+data 在 Stock 上增加：
+- board_history：最多近 20 个交易日的板位事实记录，含 trade_date、is_limit_up、is_final 等字段。
+- themes：所属题材的 theme_id、name 数组。
+- events：该股事件分页首批，结构为 EventPage，当前最多 200 条。
+
+更多个股事件通过：
+/api/v1/sentiment/events?code={code}&after={next_cursor}
+
+股票不属于所选 scope 或不在该快照观测名单内时返回 404。
+
+十、GET /ladder
+
+完整路径：
+/api/v1/sentiment/ladder
+
+除公共参数外：
+- theme_id：可选题材 ID。
+- status：limit_up / opened / touched，默认 limit_up。
+  - limit_up：当前处于涨停价。
+  - opened：触板后当前打开。
+  - touched：当日已触板。
+- min_streak：可选，范围 1—100。
+- board_type：可选，使用前述交易板块枚举。
+- group_by：theme / market，默认 theme。
+
+data 即 LadderData：
+{
+  "groups": [
+    {
+      "theme_id": "题材ID或null",
+      "name": "分组名称",
+      "levels": [
+        {
+          "height": 3,
+          "height_basis": "intraday_or_target",
+          "count": 2,
+          "stocks": [Stock]
+        }
+      ]
+    }
+  ],
+  "unique_count": 2,
+  "membership_count": 3,
+  "status": "limit_up"
+}
+
+当前涨停股按 intraday_streak 分层；已打开的股票使用 target_streak。
+高度可为 null。
+同高度按首次观察到触板的时间、股票代码排序，不使用题材成员的热度排序。
+unique_count 是去重股票数；membership_count 是跨题材重复展示后的数量。
+group_by=market 时，分组 theme_id 可为 null。
+
+十一、GET /events
+
+完整路径：
+/api/v1/sentiment/events
+
+除公共参数外：
+- theme_id：可选。
+- code：可选六位股票代码。
+- event_type：可选单个事件类型。
+- after：可选，上一页返回的 next_cursor，最长 80 字符。
+- limit：默认 100，范围 1—200。
+
+data 即 EventPage：
+{
+  "items": [Event],
+  "next_cursor": "游标或null",
+  "has_more": true
+}
+
+接口按 event_id 升序分页。
+游标属于特定 scope 和交易日，跨范围或跨日期使用会返回 422。
+晚于当前快照的游标返回 409。
+event_id 是事件的稳定去重标识。
+
+Event 字段：
+event_id、snapshot_id、type、label、
+code、name、theme_ids、
+observed_at、source_time、timing_basis、
+rule_version、evidence、cooldown_seconds。
+还可能带 trade_date、sequence、scope 等扩展字段。
+
+环境切换事件的 code/name 可以为 null，并可能包含：
+scope_id、previous_state、state。
+
+全部事件类型：
+- first_touch：首次触板。
+- first_seal：首次封板。
+- open：打开涨停板。
+- reseal：回封涨停。
+- limit_down：触及跌停。
+- open_limit_down：打开跌停板。
+- rapid_rise：暴力拉升。
+- rapid_fall：急速下跌。
+- quick_rebound：快速反弹。
+- high_dive：高台跳水。
+- volume_surge：放量异动。
+- emotion_changed：环境切换。
+
+六类新增行为由后端计算：
+- rapid_rise：最近 180 秒价格上涨至少 3%。
+- rapid_fall：最近 180 秒价格下跌至少 3%。
+- quick_rebound：最近 300 秒窗口先下跌至少 1%，随后从窗口低点反弹至少 2%。
+- high_dive：最近 300 秒窗口先上涨至少 1%，随后从窗口高点回撤至少 2%。
+- volume_surge：最近约 60 秒成交额按实际采样时间归一后，达到此前约 240 秒每分钟均额的至少 3 倍，且最近该段实际成交额至少 1000 万元。
+- open_limit_down：连续有效观察中，从跌停价变为高于跌停价。
+
+新增行为通常带：
+rule_version=price-behavior-v1、
+cooldown_seconds=300、
+evidence 中的实际价格/幅度/成交额及门槛。
+
+这些价格幅度是原始价格变化，不是 r10。
+同股同类型有 300 秒冷却，不同类型可以同时出现。
+evidence 为按事件类型变化的对象，不是所有类型共用一套固定字段。
+以上是接口语义，计算与触发由后端负责。
+
+请求示例：
+/api/v1/sentiment/events?scope=all_a&event_type=rapid_rise&limit=100
+/api/v1/sentiment/events?scope=all_a&theme_id={theme_id}&limit=100
+/api/v1/sentiment/events?scope=all_a&code=300750&after={next_cursor}
+
+十二、GET /timeseries
+
+完整路径：
+/api/v1/sentiment/timeseries
+
+除公共参数外：
+- interval：1m / 5m / 1d，默认 1m。
+- theme_id：可选。省略时返回市场统计，传入时返回指定题材统计。
+- end_date：可选 YYYY-MM-DD，默认当前绑定快照日期。
+- start_date：可选 YYYY-MM-DD，默认 end_date。
+
+日期限制：
+- start_date 不得晚于 end_date。
+- end_date 不得晚于本次绑定快照的 trade_date。
+- end_date 与 start_date 的自然日差：
+  1m 最多 7，5m 最多 186，1d 最多 366。
+
+data：
+{
+  "interval": "5m",
+  "theme_id": null,
+  "start_date": "2026-10-22",
+  "end_date": "2026-10-22",
+  "count": 47,
+  "items": [
+    {
+      "timestamp": "带时区的时间",
+      "as_of": "该点实际观察时间",
+      "snapshot_id": "该点来源发布标识",
+      "is_final": false,
+      "rule_version": "该点规则版本",
+      "classification_version": "该点分类版本",
+      "market": Stats
+    }
+  ]
+}
+
+传入 theme_id 时，items 中使用 theme 字段替代 market，值为该题材统计，缺失时可能为 null。
+
+interval 语义：
+- 1m：该分钟首次提交的观察，不等于一分钟 K 线收盘价。
+- 5m：实际处理的五分钟环境窗口，包含 emotion、条件与证据。
+- 1d：正式日级定稿事实。
+
+已有环境阶段可以连续沿用，但未知统计数值仍为 null。
+某个历史日期没有新版五分钟记录时可能返回空数组。
+日级定稿不会用最终收盘事实回填过去的分钟窗口。
+时间点中的 snapshot_id 是来源标识，不是可以获取过去完整成员列表的历史版本句柄。
+
+请求示例：
+/api/v1/sentiment/timeseries?scope=all_a&interval=5m
+/api/v1/sentiment/timeseries?scope=all_a&interval=5m&theme_id={theme_id}
+/api/v1/sentiment/timeseries?scope=all_a&interval=1d&start_date=2026-10-01&end_date=2026-10-22
+
+十三、GET /stream
+
+完整路径：
+/api/v1/sentiment/stream
+
+参数：
+- scope：all_a / hs_mainboard，默认 all_a。
+
+请求头：
+- Last-Event-ID：可选，上次 SSE 消息的快照 ID，最长 80 字符。
+
+SSE 始终跟随指定 scope 的最新交易日，不提供指定历史 trade_date 的回放订阅。
+目标每 5 秒检查一次新的已发布快照。
+
+命名事件：
+snapshot、resync、update、heartbeat、unavailable。
+
+snapshot / resync / update 的消息 id 为 snapshot_id。
+消息 data 是 JSON：
+{
+  "meta": { ... },
+  "data": {
+    "dashboard": { ...总览data... },
+    "stocks_upsert": [Stock],
+    "removed_codes": ["股票代码"],
+    "replace_all": true,
+    "events": {
+      "items": [Event],
+      "next_cursor": "游标或null",
+      "has_more": false
+    }
+  }
+}
+
+说明：
+- 首次 snapshot 和重连 resync 的 replace_all=true，通常没有 events 字段。
+- update 的 replace_all=false，并包含事件分页。
+- 跨交易日再次发送 snapshot，replace_all=true，也可能包含 events。
+- dashboard 是完整总览 data，包含题材 top_stocks。
+- stocks_upsert 是当前参与推送的股票新增或变化。
+- removed_codes 表示从该推送股票集合中移除。
+- 推送股票集合只包含有效且当日已触板或当前跌停的股票，不是全市场股票，也不是完整题材成员。
+- 事件分页每次最多 200 条，积压可能在后续消息继续发送。
+- 初始连接/重连不保证补齐断线期间的完整事件历史；完整事件可通过 /events 查询。
+- Last-Event-ID 与当前快照不一致时发送 resync。
+- 浏览器 EventSource 使用命名事件；这些消息不会统一作为普通 message 事件发送。
+
+heartbeat 的 data：
+{
+  "meta": { ... }
+}
+
+unavailable 的 data：
+{
+  "retry_after_seconds": 5
+}
+
+响应头包括：
+Cache-Control: no-cache
+X-Accel-Buffering: no
+
+代理连接需要支持 SSE 流式传输，不缓存整段响应。
+
+十四、错误响应和版本边界
+
+错误响应通常为：
+{
+  "detail": "错误说明"
+}
+
+参数校验失败时 detail 可能是结构化数组。
+
+状态码：
+- 404：指定日期、题材或股票不存在，或股票不属于当前范围。
+- 409：快照绑定已过期，或事件游标晚于当前快照。
+- 422：参数非法、日期跨度非法、scope 非法或事件游标不匹配。
+- 503：最新快照尚未生成，或数据库等依赖暂不可用。
+- 500：服务内部异常。
+
+接口不会把缺失历史自动变成零行情。
+旧历史快照可能继续使用旧规则版本，可能没有 boards、热度或五分钟记录；应以返回版本与字段为准。
+当前阶段、候选阶段、支持证据、数据完整性和是否正式定稿是相互独立的信息。
+
+以上就是本次后端接口契约。具体页面和前端代码实现由你根据现有项目自行确定。
