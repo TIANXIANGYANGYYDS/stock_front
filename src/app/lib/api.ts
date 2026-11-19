@@ -713,7 +713,7 @@ export interface NewsItem {
   publishTs?: number;
   author: string;
   sentiment: Sentiment | null;
-  scoreStatus?: 'pending' | 'unrelated' | 'unscored';
+  scoreStatus?: 'pending' | 'failed' | 'unrelated' | 'unscored';
   relatedStocks: string[];
   relatedSectors?: string[];
   impact: number | null;
@@ -1326,6 +1326,13 @@ export function mapStockProjectNews(raw: RawStockProjectNews, index = 0): NewsIt
   const impact = strongest?.score ?? null;
   const status = typeof raw.status === 'string' ? raw.status : raw.status?.status;
   const unrelated = !analyses.length && rawAnalyses.some(item => /^不涉及[板版]块$/.test(toText(item.sector_name)));
+  let scoreStatus: NewsItem['scoreStatus'];
+  if (impact === null) {
+    if (unrelated) scoreStatus = 'unrelated';
+    else if (status?.endsWith('_failed')) scoreStatus = 'failed';
+    else if (status && status !== 'finished') scoreStatus = 'pending';
+    else scoreStatus = 'unscored';
+  }
   const reason = toText(strongest?.item.sector_llm_analysis?.reason);
   const sectors = uniqueStrings(analyses.map((item) => toText(item.sector_name)));
   const companies = uniqueStrings(
@@ -1347,7 +1354,7 @@ export function mapStockProjectNews(raw: RawStockProjectNews, index = 0): NewsIt
     publishTs: publishTs || undefined,
     author: toText(raw.source, '系统'),
     sentiment: impact === null ? null : normalizeSentiment(impact),
-    ...(impact === null ? { scoreStatus: unrelated ? 'unrelated' : status && status !== 'finished' ? 'pending' : 'unscored' } as const : {}),
+    scoreStatus,
     relatedStocks: companies,
     relatedSectors: sectors,
     impact,

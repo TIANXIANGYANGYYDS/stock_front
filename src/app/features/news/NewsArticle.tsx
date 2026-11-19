@@ -8,6 +8,7 @@ export function sentimentLabel(item: NewsItem): string {
   const { sentiment, scoreStatus } = item;
   if (sentiment === null) {
     if (scoreStatus === 'pending') return '待分析';
+    if (scoreStatus === 'failed') return '分析失败';
     return scoreStatus === 'unrelated' ? '无直接板块关联' : '暂无评分';
   }
   return sentiment === 'positive' ? '利好' : sentiment === 'negative' ? '利空' : '中性';

@@ -47,6 +47,9 @@ describe('Stock Project API mappers', () => {
     expect(mapStockProjectNews({ status: { status: 'crawled' } })).toMatchObject({
       impact: null, sentiment: null, scoreStatus: 'pending',
     });
+    expect(mapStockProjectNews({ status: { status: 'sector_detail_failed' } })).toMatchObject({
+      impact: null, sentiment: null, scoreStatus: 'failed',
+    });
     expect(mapStockProjectNews({ sector_llm_analysis: [{ sector_name: '不涉及版块' }] })).toMatchObject({
       impact: null, sentiment: null, relatedSectors: [], scoreStatus: 'unrelated',
     });
