@@ -20,7 +20,7 @@ describe('quote snapshot API', () => {
     const result = await getQuoteSnapshots('auctions', ' 002580 ', '2026-10-08', AUCTION_WINDOW, signal);
     const url = new URL(fetcher.mock.calls[0][0], 'http://localhost');
     expect(url.pathname).toBe('/backend-api/api/v1/stocks/002580/auctions');
-    expect(Object.fromEntries(url.searchParams)).toEqual({ trade_date: '2026-10-08', start_time: '09:15:00', end_time: '09:30:00', limit: '1000' });
+    expect(Object.fromEntries(url.searchParams)).toEqual({ trade_date: '2026-10-08', start_time: '09:15:00', end_time: '09:30:00', limit: '1000', view: 'chart' });
     expect(fetcher.mock.calls[0][1].signal).toBe(signal);
     expect(result.possiblyTruncated).toBe(true);
     expect(result.items).toHaveLength(1);
@@ -51,6 +51,35 @@ describe('quote snapshot API', () => {
       expect(duration).toBeLessThanOrEqual(900000);
     }
   });
+  it('长窗口遇到截断时回读各段，保留跨段的样本和截断提示', async () => {
+    const fetcher = vi.fn(async (path: string) => {
+      const params = new URL(path, 'http://localhost').searchParams;
+      const start = params.get('start_time')!;
+      return json({ data: [raw({ observed_at: `2026-10-08T${start}+08:00` })],
+        possibly_truncated: params.get('limit') === '4000' || start === '10:15:00' });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const got = await getQuoteSnapshots('snapshots', '002580', '2026-10-08',
+      { start: '09:45:00', end: '10:45:00', label: '' }, undefined, 'series');
+    expect(got.items).toHaveLength(4);
+    expect(got.possiblyTruncated).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(5);
+  });
+  it('情绪全天走轻量接口，保留开盘首段、午间边界和收盘撮合', async () => {
+    const fetcher = vi.fn(async () => json({ data: [] }));
+    vi.stubGlobal('fetch', fetcher);
+    const load = createTradingDaySnapshotLoader('002580', '2026-10-08', {
+      now: () => Date.parse('2026-10-08T15:01:00+08:00'), view: 'series', concurrency: 1,
+    });
+    await load(new AbortController().signal);
+    const urls = (fetcher.mock.calls as unknown as [string][]).map(([path]) => new URL(path, 'http://localhost'));
+    expect(urls).toHaveLength(7);
+    expect(urls.every(url => url.searchParams.get('view') === 'series')).toBe(true);
+    expect(urls.map(url => url.searchParams.get('start_time'))).toEqual(
+      ['09:30:00','09:45:00','10:45:00','11:30:00','13:00:00','14:00:00','14:57:00']);
+    expect(urls.at(-1)!.searchParams.get('end_time')).toBe('15:00:01');
+  });
+
   it('waits for the observation clock to enter closing auction before reading its archive', async () => {
     const fetcher = vi.fn().mockImplementation(async () => json({ data: [] }));
     vi.stubGlobal('fetch', fetcher);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { SentimentScope } from './sentiment-contract';
+import type { DashboardData, Envelope, SentimentScope } from './sentiment-contract';
 import { ApiRequestError } from '../../lib/api';
 import { connectSentimentStream, loadSentimentSnapshot, retryable, sentimentError } from './sentiment-api';
 import { applyStreamMessage, mergeSnapshot, type LiveSnapshot } from './sentiment-live-model';
@@ -12,19 +12,21 @@ const delay = (ms: number, signal: AbortSignal) => new Promise<void>(resolve => 
 export type ConnectionState = 'loading' | 'connecting' | 'live' | 'polling' | 'historical' | 'error';
 export function useSentiment(tradeDate: string | undefined, scope: SentimentScope = 'all_a') {
   const [revision, setRevision] = useState(0);
-  const key = `v1.2:${scope}:${tradeDate ?? 'latest'}:${revision}`;
+  const key = `v1.2:${scope}:${tradeDate ?? 'latest'}`;
   const resyncRef = useRef<() => void>(() => {});
   const resync = useCallback(() => resyncRef.current(), []);
   const [store, setStore] = useState<{ key: string; snapshot: LiveSnapshot | null; connection: ConnectionState; error: string | null }>({ key: '', snapshot: null, connection: 'loading', error: null });
   useEffect(() => {
     const controller = new AbortController(), { signal } = controller;
     let lastId: string | undefined;
+    let initialDashboard: Envelope<DashboardData> | undefined;
     const status = (connection: ConnectionState, error: string | null = null) => { if (!signal.aborted) setStore(current => ({ ...current, connection, error })); };
-    setStore({ key, snapshot: null, connection: 'loading', error: null });
+    setStore(current => ({ key, snapshot: current.key === key ? current.snapshot : null, connection: 'loading', error: null }));
     let pendingLoad: Promise<void> | undefined;
     const read = async () => {
       const result = await loadSentimentSnapshot(tradeDate, signal, scope);
       if (signal.aborted) return;
+      initialDashboard = result.dashboard;
       const stocks = result.response.data.groups.flatMap(group => group.levels.flatMap(level => level.stocks));
       setStore(current => ({ ...current, snapshot: mergeSnapshot(current.snapshot, { meta: result.dashboard.meta, data: { dashboard: result.dashboard.data, stocks_upsert: stocks, removed_codes: [], replace_all: true } }, tradeDate, scope), error: null }));
     };
@@ -58,7 +60,7 @@ export function useSentiment(tradeDate: string | undefined, scope: SentimentScop
             }
             if (message.id) lastId = message.id;
             setStore(current => ({ ...current, snapshot: applyStreamMessage(current.snapshot, message, undefined, scope), connection: 'live', error: null }));
-          }, scope);
+          }, scope, lastId ? undefined : initialDashboard);
         } catch (error) {
           if (signal.aborted) return;
           if (error instanceof ApiRequestError && (error.status === 409 || error.status === 422)) lastId = undefined;
@@ -82,24 +84,24 @@ export function useSentiment(tradeDate: string | undefined, scope: SentimentScop
     };
     void run();
     return () => { controller.abort(); resyncRef.current = () => {}; };
-  }, [key, tradeDate, scope]);
+  }, [key, tradeDate, scope, revision]);
   return { ...(store.key === key ? store : { snapshot: null, connection: 'loading' as const, error: null }), refresh: () => setRevision(value => value + 1), resync };
 }
 
 /** Request keys isolate dates, filters and pages; aborted/late responses never replace new selections. */
-export function useSentimentResource<T>(key: string, loader: (signal: AbortSignal) => Promise<T>, enabled = true) {
+export function useSentimentResource<T>(key: string, loader: (signal: AbortSignal) => Promise<T>, enabled = true, publication = '') {
   const loadRef = useRef(loader); loadRef.current = loader;
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<{ key: string; data: T | null; error: string | null; errorStatus?: number; loading: boolean }>({ key: '', data: null, error: null, loading: false });
   useEffect(() => {
     const controller = new AbortController();
     if (!enabled) return;
-    setState({ key, data: null, error: null, loading: true });
+    setState(current => ({ key, data: current.key === key ? current.data : null, error: null, loading: true }));
     void loadRef.current(controller.signal).then(data => {
       if (!controller.signal.aborted) setState({ key, data, error: null, loading: false });
-    }).catch(error => { if (!controller.signal.aborted) setState({ key, data: null, error: sentimentError(error), errorStatus: error instanceof ApiRequestError ? error.status : undefined, loading: false }); });
+    }).catch(error => { if (!controller.signal.aborted) setState(current => ({ ...current, error: sentimentError(error), errorStatus: error instanceof ApiRequestError ? error.status : undefined, loading: false })); });
     return () => controller.abort();
-  }, [key, enabled, revision]);
+  }, [key, enabled, revision, publication]);
   const reload = useCallback(() => setRevision(value => value + 1), []);
   return { ...(state.key === key && enabled ? state : { data: null, error: null, errorStatus: undefined, loading: enabled }), reload };
 }

@@ -1,6 +1,7 @@
 import { requestJson } from './api';
 
 export type ChartMode = 'daily' | 'intraday' | 'seconds';
+type SnapshotView = 'chart' | 'series';
 export type SnapshotKind = 'auctions' | 'snapshots';
 export interface QuoteSnapshot {
   code: string;
@@ -67,15 +68,30 @@ export function mapQuoteSnapshot(raw: Record<string, unknown>): QuoteSnapshot {
 }
 
 export async function getQuoteSnapshots(
-  kind: SnapshotKind, code: string, tradeDate: string, window: SnapshotWindow, signal?: AbortSignal,
+  kind: SnapshotKind, code: string, tradeDate: string, window: SnapshotWindow, signal?: AbortSignal, view: SnapshotView = 'chart',
 ): Promise<QuoteSnapshotResponse> {
-  const response = await requestJson<{ data?: Array<Record<string, unknown>>; possibly_truncated?: boolean; last_observed_at?: string }>(
-    `/api/v1/stocks/${encodeURIComponent(code.trim())}/${kind}`,
-    { trade_date: tradeDate, start_time: window.start, end_time: window.end, limit: 1000 },
-    { signal, cache: 'no-store' },
-  );
   const start = Date.parse(`${tradeDate}T${window.start}+08:00`);
   const end = Date.parse(`${tradeDate}T${window.end}+08:00`);
+  const wide = view === 'series' && end - start > 15 * 60 * 1000;
+  const response = await requestJson<{ data?: Array<Record<string, unknown>>; possibly_truncated?: boolean; last_observed_at?: string }>(
+    `/api/v1/stocks/${encodeURIComponent(code.trim())}/${kind}`,
+    { trade_date: tradeDate, start_time: window.start, end_time: window.end, limit: wide ? 4000 : 1000, view },
+    { signal, cache: 'no-store' },
+  );
+  // 极密行情触及长窗口上限时，按原有十五分钟边界回读，保留每段覆盖范围。
+  if (wide && response.possibly_truncated) {
+    const parts: QuoteSnapshotResponse[] = [];
+    for (const slice of SNAPSHOT_WINDOWS) {
+      if (slice.end <= window.start || slice.start >= window.end) continue;
+      parts.push(await getQuoteSnapshots(kind, code, tradeDate, {
+        ...slice, start: slice.start < window.start ? window.start : slice.start,
+        end: slice.end > window.end ? window.end : slice.end,
+      }, signal, view));
+    }
+    return { code, tradeDate, startTime: window.start, endTime: window.end,
+      items: parts.flatMap(part => part.items), possiblyTruncated: parts.some(part => part.possiblyTruncated),
+      lastObservedAt: parts.map(part => part.lastObservedAt).filter(Boolean).at(-1) ?? '' };
+  }
   return {
     code: code.trim(), tradeDate, startTime: window.start, endTime: window.end,
     possiblyTruncated: response.possibly_truncated === true,
@@ -87,12 +103,12 @@ export async function getQuoteSnapshots(
   };
 }
 
-export async function getSecondSnapshots(code: string, tradeDate: string, window: SnapshotWindow, signal?: AbortSignal, asOf = Date.now()) {
-  const snapshots = await getQuoteSnapshots('snapshots', code, tradeDate, window, signal);
+export async function getSecondSnapshots(code: string, tradeDate: string, window: SnapshotWindow, signal?: AbortSignal, asOf = Date.now(), view: SnapshotView = 'chart') {
+  const snapshots = await getQuoteSnapshots('snapshots', code, tradeDate, window, signal, view);
   if (window.end !== '15:00:00' || asOf < Date.parse(`${tradeDate}T14:57:00+08:00`)) return snapshots;
   // The backend archives the final three minutes and the 15:00 uncross separately.
   const closing = await getQuoteSnapshots('auctions', code, tradeDate,
-    { start: window.start > '14:57:00' ? window.start : '14:57:00', end: '15:00:01', label: '收盘竞价' }, signal);
+    { start: window.start > '14:57:00' ? window.start : '14:57:00', end: '15:00:01', label: '收盘竞价' }, signal, view);
   return {
     ...snapshots, items: [...snapshots.items, ...closing.items],
     possiblyTruncated: snapshots.possiblyTruncated || closing.possiblyTruncated,
@@ -104,13 +120,13 @@ export async function getSecondSnapshots(code: string, tradeDate: string, window
 /** Fetch API-sized batches while exposing one continuous trading-day dataset. */
 export function createTradingDaySnapshotLoader(code: string, tradeDate: string, options: {
   now?: () => number; onProgress?: (data: QuoteSnapshotResponse) => void;
-  concurrency?: 1 | 2; request?: typeof getSecondSnapshots;
+  concurrency?: 1 | 2; request?: typeof getSecondSnapshots; view?: SnapshotView;
 } = {}) {
   const now = options.now ?? Date.now;
   const request = options.request ?? getSecondSnapshots;
   const cache = new Map<string, { data: QuoteSnapshotResponse; final: boolean }>();
   let merged: QuoteSnapshotResponse | undefined;
-  // Include the morning session's endpoint; every individual API request remains <= 15 minutes.
+  // 单独包含上午收盘时刻，保留午休两端的原始报价。
   const windows = [...SNAPSHOT_WINDOWS, { start: '11:30:00', end: '11:30:01', label: '午间收盘' }]
     .sort((a, b) => a.start.localeCompare(b.start));
   const timestamp = (time: string) => Date.parse(`${tradeDate}T${time}+08:00`);
@@ -124,7 +140,19 @@ export function createTradingDaySnapshotLoader(code: string, tradeDate: string, 
     return merged = { code, tradeDate, startTime: TRADING_DAY_WINDOW.start, endTime: TRADING_DAY_WINDOW.end,
       items, lastObservedAt: latest, possiblyTruncated: batches.some(batch => batch.possiblyTruncated) };
   };
+  let planned = false;
   return async (signal: AbortSignal): Promise<QuoteSnapshotResponse> => {
+    if (!planned && options.view === 'series') {
+      // 首段优先展示；已结束的历史区间合并读取，盘中尾段仍按原窗口增量更新。
+      for (const [start, end] of [['09:45:00', '10:45:00'], ['10:45:00', '11:30:00'],
+        ['13:00:00', '14:00:00'], ['14:00:00', '15:00:00']]) {
+        if (timestamp(end) > now()) continue;
+        const first = windows.findIndex(w => w.start === start);
+        const last = windows.findIndex(w => w.end === end);
+        windows.splice(first, last - first + 1, { start, end, label: `${start}–${end}` });
+      }
+      planned = true;
+    }
     const pending = windows.filter(window => timestamp(window.start) <= now() && !cache.get(window.start)?.final);
     // A single-stock chart uses two readers; multi-stock callers supply a shared slice queue.
     let index = 0;
@@ -139,7 +167,7 @@ export function createTradingDaySnapshotLoader(code: string, tradeDate: string, 
           if (cursor.date === tradeDate && cursor.time > start && cursor.time < window.end) start = cursor.time;
         }
         const requestedAt = now();
-        const next = await request(code, tradeDate, { ...window, start }, signal, requestedAt);
+        const next = await request(code, tradeDate, { ...window, start }, signal, requestedAt, options.view);
         signal.throwIfAborted();
         const incremental = start !== window.start;
         const items = new Map((incremental ? previous?.items ?? [] : []).map(row => [`${row.observedAt}:${row.provider}`, row]));

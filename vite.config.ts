@@ -64,7 +64,6 @@ export default defineConfig(({ mode, command }) => {
         output: {
           manualChunks: {
             financialCharts: ['lightweight-charts'],
-            analyticsCharts: ['recharts'],
           },
         },
       },

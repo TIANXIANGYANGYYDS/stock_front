@@ -93,8 +93,8 @@ export function createDaySeriesStore(dependencies: Dependencies = {}) {
       entry = { code, day, scope, revision: 0, loadedRevision: -1, eventBlocked: false, asOf: 0, loadedThrough: -1, listeners: new Set(), events: new Map(), retryAt: 0, permanentError: false,
         load: undefined!, state: { series: { code, points: [], events: [], limit_ratio: null }, loaded: false, loading: false, error: null, eventError: null, truncated: false } };
       const current = entry;
-      entry.load = quoteLoader(code, day, { now: () => current.asOf, concurrency: 1,
-        request: (symbol, date, window, signal, asOf) => readQuote(signal!, () => getSecondSnapshots(symbol, date, window, signal, asOf)),
+      entry.load = quoteLoader(code, day, { now: () => current.asOf, concurrency: 1, view: 'series',
+        request: (symbol, date, window, signal, asOf) => readQuote(signal!, () => getSecondSnapshots(symbol, date, window, signal, asOf, 'series')),
         onProgress: data => {
           if (current.controller && !current.controller.signal.aborted) publishQuotes(current, data);
         } });

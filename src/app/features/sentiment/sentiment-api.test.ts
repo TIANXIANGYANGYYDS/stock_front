@@ -63,6 +63,25 @@ describe('sentiment API contract and transport', () => {
     expect(emit).not.toHaveBeenCalled();
     expect(String(fetcher.mock.calls[0][0])).toContain('/stream?scope=all_a');
   });
+  it('仅将同版本股票首帧与已加载的总览结合', async () => {
+    const controller = new AbortController();
+    const bootstrap = { meta: example.dashboard.meta, data: { replace_all: true, stocks_upsert: [], removed_codes: [] } };
+    const stream = (payload: typeof bootstrap) => new Response(
+      `event: stocks_snapshot\ndata: ${JSON.stringify(payload)}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
+    const fetcher = vi.fn().mockResolvedValueOnce(json(example.dashboard))
+      .mockResolvedValueOnce(stream(bootstrap))
+      .mockResolvedValueOnce(stream({ ...bootstrap, meta: { ...bootstrap.meta, snapshot_id: '其他版本' } }));
+    vi.stubGlobal('fetch', fetcher);
+    const known = await sentimentApi.dashboard();
+    const emit = vi.fn(() => controller.abort());
+    await connectSentimentStream(controller.signal, undefined, emit, 'all_a', known);
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ type: 'snapshot', payload: {
+      meta: bootstrap.meta, data: { ...bootstrap.data, dashboard: known.data },
+    } }));
+    expect(new URL(fetcher.mock.calls[1][0], 'http://localhost').searchParams.get('dashboard_id')).toBe(known.meta.snapshot_id);
+    await expect(connectSentimentStream(new AbortController().signal, undefined, emit, 'all_a', known)).rejects.toThrow('版本不一致');
+    expect(emit).toHaveBeenCalledTimes(1);
+  });
   it('parses named, multiline SSE across CRLF and chunk boundaries', () => {
     const emit = vi.fn(), feed = createSseDecoder(emit);
     feed(': keepalive\r\nid: snapshot-1\r\nevent: update\r\nda'); feed('ta: {"a":\r\ndata: 1}\r\n\r'); feed('\n');

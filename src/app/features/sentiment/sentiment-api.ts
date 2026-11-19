@@ -33,9 +33,10 @@ export const sentimentApi = {
 export const snapshotQuery = (meta: SentimentMeta): CommonQuery => ({ trade_date: meta.trade_date, snapshot_id: meta.snapshot_id, scope: meta.scope });
 
 /** A 409 restarts the entire pair once. Other errors are never blindly retried here. */
-export async function atConsistentSnapshot<T>(tradeDate: string | undefined, query: (meta: SentimentMeta, attempt: number) => Promise<Envelope<T>>, signal?: AbortSignal, scope: SentimentScope = 'all_a') {
+export async function atConsistentSnapshot<T>(tradeDate: string | undefined, query: (meta: SentimentMeta, attempt: number) => Promise<Envelope<T>>, signal?: AbortSignal, scope: SentimentScope = 'all_a', known?: Envelope<DashboardData>) {
   for (let attempt = 0; ; attempt++) {
-    const dashboard = await sentimentApi.dashboard({ trade_date: tradeDate, scope }, signal);
+    const dashboard = attempt === 0 && known?.meta.scope === scope && known.meta.trade_date === tradeDate
+      ? known : await sentimentApi.dashboard({ trade_date: tradeDate, scope }, signal);
     try { return { dashboard, response: await query(dashboard.meta, attempt) }; }
     catch (error) { if (!(error instanceof ApiRequestError && error.status === 409 && attempt === 0) || signal?.aborted) throw error; }
   }
@@ -77,7 +78,7 @@ export function createSseDecoder(emit: (message: { event: string; data: string; 
     while ((newline = buffer.indexOf('\n')) >= 0) { line(buffer.slice(0, newline).replace(/\r$/, '')); buffer = buffer.slice(newline + 1); }
   };
 }
-export async function connectSentimentStream(signal: AbortSignal, lastId: string | undefined, onMessage: (message: StreamMessage) => void, scope: SentimentScope = 'all_a') {
+export async function connectSentimentStream(signal: AbortSignal, lastId: string | undefined, onMessage: (message: StreamMessage) => void, scope: SentimentScope = 'all_a', known?: Envelope<DashboardData>) {
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal.addEventListener('abort', abort, { once: true });
@@ -87,16 +88,26 @@ export async function connectSentimentStream(signal: AbortSignal, lastId: string
   touch();
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
-    const response = await requestResponse(`${PREFIX}/stream`, { scope }, {
+    const response = await requestResponse(`${PREFIX}/stream`, { scope, dashboard_id: known?.meta.snapshot_id }, {
       signal: controller.signal, cache: 'no-store', headers: { Accept: 'text/event-stream', ...(lastId ? { 'Last-Event-ID': lastId } : {}) },
     });
     if (!response.headers.get('content-type')?.includes('text/event-stream') || !response.body) throw new SentimentContractError('实时接口未返回 SSE 数据流。');
     reader = response.body.getReader();
     const decoder = new TextDecoder();
     const feed = createSseDecoder(message => {
-      if (!['snapshot', 'resync', 'update', 'heartbeat', 'unavailable'].includes(message.event)) return;
+      if (!['snapshot', 'resync', 'update', 'heartbeat', 'unavailable', 'stocks_snapshot'].includes(message.event)) return;
       let payload;
       try { payload = JSON.parse(message.data); } catch { throw new SentimentContractError('实时消息不是有效 JSON。'); }
+      if (message.event === 'stocks_snapshot') {
+        // 只将已加载的总览与同一天、同范围、同一版本的股票首帧组合。
+        if (!known || known.meta.scope !== scope || payload?.meta?.scope !== scope ||
+            known.meta.trade_date !== payload.meta.trade_date || known.meta.snapshot_id !== payload.meta.snapshot_id ||
+            payload.data?.replace_all !== true || !Array.isArray(payload.data.stocks_upsert)) {
+          throw new SentimentContractError('实时首帧与已加载总览版本不一致。');
+        }
+        payload.data.dashboard = known.data;
+        message.event = 'snapshot';
+      }
       if (message.event !== 'unavailable' && !payload?.meta?.snapshot_id) throw new SentimentContractError('实时消息缺少快照信息。');
       if (message.event !== 'unavailable' && payload.meta.scope !== scope) throw new SentimentContractError('实时消息的观测范围与订阅不一致。');
       if (['snapshot', 'resync', 'update'].includes(message.event) && (!payload?.data?.dashboard || !Array.isArray(payload.data.stocks_upsert))) throw new SentimentContractError('实时消息结构与契约不一致。');

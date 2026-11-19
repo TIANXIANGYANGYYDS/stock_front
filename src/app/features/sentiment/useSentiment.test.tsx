@@ -116,6 +116,26 @@ describe('sentiment request lifecycle', () => {
     await act(async () => root.render(<Probe />)); expect(host.textContent).toContain('empty|error|');
     await act(async () => vi.advanceTimersByTimeAsync(5000)); expect(mocks.load).toHaveBeenCalledTimes(2); expect(host.textContent).toContain('2026-09-03|connecting');
   });
+  it('同范围刷新期间保留已发布内容，切换日期时立即清除旧内容', async () => {
+    let state!: ReturnType<typeof useSentiment>;
+    function Page({ day }: { day: string }) {
+      state = useSentiment(day);
+      return <span>{state.snapshot?.meta.trade_date ?? '读取中'}</span>;
+    }
+    await act(async () => root.render(<Page day="2026-09-03" />));
+    const pending = deferred<ReturnType<typeof bundle>>();
+    mocks.load.mockReturnValueOnce(pending.promise);
+    await act(async () => state.refresh());
+    expect(host.textContent).toBe('2026-09-03');
+    const next = deferred<ReturnType<typeof bundle>>();
+    mocks.load.mockReturnValueOnce(next.promise);
+    await act(async () => root.render(<Page day="2026-09-04" />));
+    expect(host.textContent).toBe('读取中');
+    await act(async () => pending.resolve(bundle()));
+    expect(host.textContent).toBe('读取中');
+    await act(async () => next.resolve(bundle('2026-09-04')));
+    expect(host.textContent).toBe('2026-09-04');
+  });
   it('isolates detail filter/page changes from stale asynchronous results', async () => {
     const a = deferred<string>(), b = deferred<string>();
     function Resource({ query }: { query: string }) { const result = useSentimentResource(query, () => query === 'a' ? a.promise : b.promise); return <span>{result.data ?? 'loading'}</span>; }

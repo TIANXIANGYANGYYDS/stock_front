@@ -665,7 +665,8 @@ export function ProfessionalCandlestickChart({
   const isSecondsMode = chartMode === 'seconds';
   const isDailyMode = chartMode === 'daily';
   const latestSecond = secondItems.at(-1);
-  const secondsState = seconds.initialLoading ? '秒级行情加载中'
+  const secondsState = seconds.initialLoading
+    ? secondItems.length ? `已显示 ${secondItems.length} 个采样点 · 正在补齐全天走势` : '秒级行情加载中'
     : seconds.error ? secondItems.length ? '数据可能延迟' : '秒级行情暂不可用'
       : !secondItems.length ? seconds.data?.items.length ? '当日暂无有效秒级报价' : '当日暂无秒级行情'
         : `${secondItems.length} 个采样点 · ${formatShanghaiTime(latestSecond!.observedAt)}`;

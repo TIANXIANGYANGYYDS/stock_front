@@ -1,12 +1,9 @@
-﻿import { useEffect, useRef, useState, type ComponentProps } from 'react';
+﻿import { lazy, Suspense, useEffect, useRef, useState, type ComponentProps } from 'react';
 import { BrowserRouter, useLocation, useNavigate } from 'react-router';
 import { TerminalHeader, type WorkspaceView } from './components/TerminalHeader';
 import { DecisionWorkspace } from './features/decision/DecisionWorkspace';
-import { MarketInsightsView } from './features/market/MarketInsightsView';
 import { NewsIntelligenceView } from './features/news/NewsIntelligenceView';
 import { CreatorInsightsView } from './features/creators/CreatorInsightsView';
-import { QuantWorkspace } from './features/quant/QuantWorkspace';
-import { SentimentWorkspace } from './features/sentiment/SentimentWorkspace';
 import {
   getLatestMarketDates,
 } from './lib/api';
@@ -16,6 +13,10 @@ import { AppearanceProvider, useAppearance } from './hooks/useAppearance';
 import { StudioMotionProvider } from './components/StudioMotion';
 import CommandCenter from './components/CommandCenter';
 import MarketPanorama from './features/panorama/MarketPanorama';
+
+const MarketInsightsView = lazy(() => import('./features/market/MarketInsightsView').then(module => ({ default: module.MarketInsightsView })));
+const QuantWorkspace = lazy(() => import('./features/quant/QuantWorkspace').then(module => ({ default: module.QuantWorkspace })));
+const SentimentWorkspace = lazy(() => import('./features/sentiment/SentimentWorkspace').then(module => ({ default: module.SentimentWorkspace })));
 
 const LATEST_DATES_REFRESH_MS = 60_000;
 
@@ -128,6 +129,7 @@ function AppContent() {
       />
 
       <div key={activeView} className="terminal-main">
+        <Suspense fallback={<main className="terminal-panel terminal-empty" role="status">正在加载工作区…</main>}>
         {activeView === 'creators' && <CreatorInsightsView />}
         {activeView === 'quant' && <QuantWorkspace />}
         {activeView === 'sentiment' && <SentimentWorkspace />}
@@ -160,6 +162,7 @@ function AppContent() {
         {requiresMarketDate && !tradeDateLoading && marketTradeDate && activeView === 'news' && (
           <NewsIntelligenceView tradeDate={marketTradeDate} />
         )}
+        </Suspense>
       </div>
       {utility === 'commands' && <CommandCenter tradeDate={marketTradeDate} onClose={closeUtility} onRestoreFocus={restoreUtilityFocus}
         onView={(view) => { closeUtility(); handleViewChange(view); }} onStock={openStock}

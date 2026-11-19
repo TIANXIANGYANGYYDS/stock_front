@@ -31,6 +31,48 @@ afterEach(async () => {
 });
 
 describe('snapshot polling', () => {
+  it('在第一段返回时展示个股报价，并保留慢段和错误状态', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-08T09:48:00+08:00'));
+    let finish!: (result: Response) => void;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response('09:30:05'))
+      .mockImplementationOnce(() => new Promise<Response>(resolve => { finish = resolve; })));
+    host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host);
+    await act(async () => root!.render(<DayHarness />));
+    expect(host.textContent).toBe('002580:19.52');
+    expect(state.initialLoading).toBe(true);
+    await act(async () => finish(new Response('', { status: 503 })));
+    expect(host.textContent).toBe('002580:19.52');
+    expect(state.delayed).toBe(true);
+  });
+
+  it('完成前快速切回也复用同一次已结束竞价请求', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-08T09:40:00+08:00'));
+    let finish!: (result: Response) => void;
+    const fetcher = vi.fn(() => new Promise<Response>(resolve => { finish = resolve; }));
+    vi.stubGlobal('fetch', fetcher);
+    await render({ kind: 'auctions', code: '600519' });
+    await act(async () => root!.unmount()); root = null;
+    await render({ kind: 'auctions', code: '600519' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await act(async () => finish(response('09:24:01', 10, '600519')));
+    expect(host.textContent).toBe('600519:10');
+  });
+
+  it('复用已结束的竞价，切换股票保持隔离，过期后会重新核对', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-08T10:00:00+08:00'));
+    const fetcher = vi.fn(async (path: string) => response('09:23:05', 10, path.split('/').at(-2)));
+    vi.stubGlobal('fetch', fetcher);
+    await render({ kind: 'auctions' });
+    await render({ kind: 'auctions', code: '000001' });
+    await act(async () => root!.unmount()); root = null;
+    await render({ kind: 'auctions' });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(host.textContent).toBe('002580:10');
+    await act(async () => vi.advanceTimersByTimeAsync(31 * 60000));
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
   it('keeps one day dataset across API batch boundaries and preserves existing quotes while the new batch loads', async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-08T09:44:59+08:00'));
     let finish!: (response: Response) => void;

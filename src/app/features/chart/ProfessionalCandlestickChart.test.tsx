@@ -294,6 +294,8 @@ describe('ProfessionalCandlestickChart interactions', () => {
   });
 
   it('renders raw auction book prices before the minute chart without mixing the previous close into candles', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-10T10:00:00+08:00'));
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: [{
       code: stock.code, observed_at: '2026-08-10T09:20:05+08:00', market_data_time: '2026-08-10T09:20:05+08:00',
       phase: 'opening_auction_locked', price: 9, bids: [[10.5, 1000]], asks: [[10.6, 1000]], provider: 'tencent',

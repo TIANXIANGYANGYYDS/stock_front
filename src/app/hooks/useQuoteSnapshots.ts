@@ -1,6 +1,18 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { createTradingDaySnapshotLoader, getQuoteSnapshots, getSecondSnapshots, shanghaiDateTime, TRADING_DAY_WINDOW, type QuoteSnapshotResponse, type SnapshotKind, type SnapshotWindow } from '../lib/quote-snapshots';
 import { useRealtimePolling } from './useRealtimePolling';
+
+// 已结束的竞价在页签间复用；设置有效期，让迟到补档也能重新读到。
+const auctions = new Map<string, { data: QuoteSnapshotResponse; final: boolean; savedAt: number }>();
+const auctionTtlMs = 30 * 60 * 1000;
+
+const pendingAuctions = new Map<string, Promise<QuoteSnapshotResponse>>();
+
+function saveAuction(key: string, data: QuoteSnapshotResponse, savedAt: number, final: boolean) {
+  auctions.delete(key);
+  auctions.set(key, { data, savedAt, final });
+  if (auctions.size > 32) auctions.delete(auctions.keys().next().value!);
+}
 
 export function useQuoteSnapshots({ kind, code, tradeDate, window, enabled = true }: {
   kind: SnapshotKind;
@@ -12,7 +24,26 @@ export function useQuoteSnapshots({ kind, code, tradeDate, window, enabled = tru
   const queryKey = `quote-snapshots:${kind}:${code}:${tradeDate}:${window.start}:${window.end}`;
   const cache = useRef<{ key: string; data: QuoteSnapshotResponse } | null>(null);
   const request = useCallback(async (signal: AbortSignal) => {
-    const previous = cache.current?.key === queryKey ? cache.current.data : null;
+    const startedAt = Date.now();
+    const ended = startedAt >= Date.parse(`${tradeDate}T${window.end}+08:00`) + 30000;
+    const saved = kind === 'auctions' ? auctions.get(queryKey) : undefined;
+    const recent = saved && saved.savedAt <= startedAt && startedAt - saved.savedAt < auctionTtlMs ? saved : undefined;
+    if (kind === 'auctions' && ended) {
+      // 已结束时始终核对整个窗口；短暂空档稍后重查，切换页面共享正在返回的请求。
+      if (recent?.final && (recent.data.items.length || startedAt - recent.savedAt < 15000)) return recent.data;
+      let pending = pendingAuctions.get(queryKey);
+      if (!pending) {
+        pending = getQuoteSnapshots(kind, code, tradeDate, window).then(data => {
+          saveAuction(queryKey, data, startedAt, !data.possiblyTruncated);
+          return data;
+        }).finally(() => pendingAuctions.delete(queryKey));
+        pendingAuctions.set(queryKey, pending);
+      }
+      const completed = await pending;
+      signal.throwIfAborted();
+      return completed;
+    }
+    const previous = kind === 'auctions' ? recent?.data : cache.current?.key === queryKey ? cache.current.data : null;
     let requestedWindow = window;
     if (previous && !previous.possiblyTruncated && Number.isFinite(Date.parse(previous.lastObservedAt))) {
       const cursor = shanghaiDateTime(new Date(previous.lastObservedAt));
@@ -31,6 +62,7 @@ export function useQuoteSnapshots({ kind, code, tradeDate, window, enabled = tru
     const data = { ...next, startTime: window.start, items: [...merged.values()],
       lastObservedAt: next.lastObservedAt || (incremental ? previous?.lastObservedAt ?? '' : '') };
     cache.current = { key: queryKey, data };
+    if (kind === 'auctions') saveAuction(queryKey, data, startedAt, false);
     return data;
   }, [kind, code, tradeDate, window.start, window.end, queryKey]);
   const state = useRealtimePolling({
@@ -53,7 +85,8 @@ export function useQuoteSnapshots({ kind, code, tradeDate, window, enabled = tru
 }
 
 export function useTradingDaySnapshots({ code, tradeDate, enabled }: { code: string; tradeDate: string; enabled: boolean }) {
-  const request = useMemo(() => createTradingDaySnapshotLoader(code, tradeDate), [code, tradeDate]);
+  const [progress, setProgress] = useState<QuoteSnapshotResponse | null>(null);
+  const request = useMemo(() => createTradingDaySnapshotLoader(code, tradeDate, { onProgress: setProgress }), [code, tradeDate]);
   const state = useRealtimePolling({
     enabled: enabled && /^\d{6}$/.test(code) && /^\d{4}-\d{2}-\d{2}$/.test(tradeDate),
     queryKey: `trading-day-snapshots:${code}:${tradeDate}`,
@@ -61,6 +94,7 @@ export function useTradingDaySnapshots({ code, tradeDate, enabled }: { code: str
     intervalMs: 5000,
     getMarketStatus: () => Date.now() >= Date.parse(`${tradeDate}T${TRADING_DAY_WINDOW.end}+08:00`) + 30000 ? 'closed' : 'open',
   });
-  const data = enabled && state.data?.code === code && state.data.tradeDate === tradeDate ? state.data : null;
+  const latest = progress?.code === code && progress.tradeDate === tradeDate ? progress : state.data;
+  const data = enabled && latest?.code === code && latest.tradeDate === tradeDate ? latest : null;
   return { ...state, data };
 }
