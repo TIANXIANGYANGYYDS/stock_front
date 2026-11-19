@@ -1,4 +1,5 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { RankingEvidence } from '../features/market/RankingEvidence';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   LineChart,
   Line,
@@ -10,10 +11,11 @@ import {
   Legend,
 } from 'recharts';
 import { TrendingUp, TrendingDown } from 'lucide-react';
-import { getSectorTrend, type RankingWindow, type SectorTrendResponse, type TrendSeries } from '../lib/api';
+import { getSectorTrend, type RawRankingSnapshot, type RankingWindow, type SectorTrendResponse, type TrendSeries } from '../lib/api';
 
 interface SectorTrendProps {
   bizDate: string;
+  loadHistory: (date: string) => Promise<RawRankingSnapshot[]>;
   window: RankingWindow;
   onSectorClick: (sector: string | null) => void;
   selectedSector: string | null;
@@ -41,7 +43,7 @@ function buildChartData(series: TrendSeries[]) {
     .map(([, value]) => value);
 }
 
-export function SectorTrend({ bizDate, window, onSectorClick, selectedSector }: SectorTrendProps) {
+export function SectorTrend({ bizDate, window, onSectorClick, selectedSector, loadHistory }: SectorTrendProps) {
   const [data, setData] = useState<SectorTrendResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +56,7 @@ export function SectorTrend({ bizDate, window, onSectorClick, selectedSector }: 
       setLoading(true);
       setError(null);
       try {
-        const response = await getSectorTrend(bizDate, window);
+        const response = await getSectorTrend(bizDate, window, loadHistory);
         if (!cancelled) {
           setData(response);
         }
@@ -75,13 +77,13 @@ export function SectorTrend({ bizDate, window, onSectorClick, selectedSector }: 
     return () => {
       cancelled = true;
     };
-  }, [bizDate, window, reload]);
+  }, [bizDate, window, reload, loadHistory]);
 
   const topSectors = data?.items ?? [];
   const baseSeries = data?.series ?? [];
 
-  const hasSelected = !!selectedSector && topSectors.some((s) => s.name === selectedSector);
-  const displaySeries = hasSelected
+  const selected = topSectors.find(item => item.name === selectedSector);
+  const displaySeries = selected
     ? baseSeries.filter((s) => s.name === selectedSector)
     : baseSeries.slice(0, 5);
   const displayChartData = useMemo(() => buildChartData(displaySeries), [displaySeries]);
@@ -92,7 +94,7 @@ export function SectorTrend({ bizDate, window, onSectorClick, selectedSector }: 
     <div className="bg-slate-900/50 backdrop-blur-xl rounded-2xl border border-slate-800/50 overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-800/50">
         <h3 className="text-sm text-white">市场板块投资倾向</h3>
-        <p className="text-xs text-slate-500 mt-1">Stock_Project 投资倾向快照 · {bizDate}</p>
+        <p className="text-xs text-slate-500 mt-1">{data?.windowHours && `滚动 ${data.windowHours} 小时评分 · `}{data?.asOf ? `截至 ${data.asOf} 北京时间` : bizDate}</p>
       </div>
 
       <div className="p-5">
@@ -139,40 +141,40 @@ export function SectorTrend({ bizDate, window, onSectorClick, selectedSector }: 
           </div>
           <div className="divide-y divide-slate-700/30">
             {topSectors.map((sector) => (
-              <div
-                key={`${sector.rank}-${sector.name}`}
-                role="button"
-                tabIndex={0}
-                aria-pressed={selectedSector === sector.name}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    onSectorClick(selectedSector === sector.name ? null : sector.name);
-                  }
-                }}
-                className={`grid grid-cols-5 gap-px cursor-pointer transition-colors ${
-                  selectedSector === sector.name ? 'bg-blue-500/20' : 'bg-slate-800/20 hover:bg-slate-800/40'
-                }`}
-                onClick={() => onSectorClick(selectedSector === sector.name ? null : sector.name)}
-              >
-                <div className="px-3 py-2.5 text-xs text-slate-400">#{sector.rank}</div>
+              <Fragment key={sector.name}>
                 <div
-                  className={`px-3 py-2.5 text-sm col-span-2 ${
-                    selectedSector === sector.name ? 'text-blue-300' : 'text-slate-200'
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selectedSector === sector.name}
+                  aria-expanded={selectedSector === sector.name}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSectorClick(selectedSector === sector.name ? null : sector.name);
+                    }
+                  }}
+                  className={`grid grid-cols-5 gap-px cursor-pointer transition-colors ${
+                    selectedSector === sector.name ? 'bg-blue-500/20' : 'bg-slate-800/20 hover:bg-slate-800/40'
                   }`}
+                  onClick={() => onSectorClick(selectedSector === sector.name ? null : sector.name)}
                 >
-                  {sector.name}
+                  <div className="px-3 py-2.5 text-xs text-slate-400">#{sector.rank}</div>
+                  <div
+                    className={`px-3 py-2.5 text-sm col-span-2 ${
+                      selectedSector === sector.name ? 'text-blue-300' : 'text-slate-200'
+                    }`}
+                  >
+                    {sector.name}
+                  </div>
+                  <div className="px-3 py-2.5 text-sm text-white text-right">{sector.score.toFixed(2)}
+                    <small className="ranking-change">{sector.change === null ? '暂无可比快照'
+                      : sector.change === 0 ? '持平' : <>{sector.change > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                        {sector.change > 0 ? '+' : ''}{sector.change.toFixed(2)}</>}</small>
+                  </div>
+                  <div className="px-3 py-2.5 text-sm text-right">{sector.newsCount ?? 0}</div>
                 </div>
-                <div className="px-3 py-2.5 text-sm text-white text-right">{sector.score.toFixed(2)}</div>
-                <div
-                  className={`px-3 py-2.5 text-sm text-right flex items-center justify-end gap-1 ${
-                    sector.trend === 'up' ? 'text-red-400' : 'text-green-400'
-                  }`}
-                >
-                  {sector.trend === 'up' ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                  {sector.newsCount ?? 0}
-                </div>
-              </div>
+                {selectedSector === sector.name && <RankingEvidence sector={sector.name} items={sector.evidence ?? []} />}
+              </Fragment>
             ))}
 
             {!loading && !error && !topSectors.length && (

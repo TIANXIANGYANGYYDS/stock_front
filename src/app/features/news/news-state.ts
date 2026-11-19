@@ -12,6 +12,8 @@ export function sortNews(
   return [...items].sort((left, right) => {
     const leftValue = field === 'score' ? left.impact : left.publishTs ?? 0;
     const rightValue = field === 'score' ? right.impact : right.publishTs ?? 0;
+    if (leftValue === null) return rightValue === null ? 0 : 1;
+    if (rightValue === null) return -1;
     return (leftValue - rightValue) * multiplier;
   });
 }

@@ -1,10 +1,15 @@
 import { Building2, Sparkles, Tag } from 'lucide-react';
-import type { NewsItem, Sentiment } from '../../lib/api';
+import type { NewsItem } from '../../lib/api';
 import { ReadingProgress } from '../../components/ReadingProgress';
 import * as m from 'motion/react-m';
 import { useEntranceMotion } from '../../components/StudioMotion';
 
-export function sentimentLabel(sentiment: Sentiment): string {
+export function sentimentLabel(item: NewsItem): string {
+  const { sentiment, scoreStatus } = item;
+  if (sentiment === null) {
+    if (scoreStatus === 'pending') return '待分析';
+    return scoreStatus === 'unrelated' ? '无直接板块关联' : '暂无评分';
+  }
   return sentiment === 'positive' ? '利好' : sentiment === 'negative' ? '利空' : '中性';
 }
 
@@ -26,7 +31,7 @@ export function NewsArticle({ item }: { item: NewsItem }) {
         <div className="news-detail-meta">
           <span>{item.source}</span><span>{item.publishTime || item.time}</span>
           <span className={`sentiment-pill sentiment-${item.sentiment}`}>
-            {sentimentLabel(item.sentiment)} {scoreText(item.impact)}
+            {sentimentLabel(item)} {item.impact !== null && scoreText(item.impact)}
           </span>
         </div>
         <h2>{item.title}</h2>

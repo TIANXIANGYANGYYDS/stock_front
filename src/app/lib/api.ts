@@ -271,7 +271,17 @@ export interface RawStockProjectNews {
   sector_llm_analysis?: RawStockProjectSectorAnalysis[] | null;
 }
 
+export interface RankingEvidence {
+  event_id: string;
+  title: string;
+  source: string;
+  publish_time: string;
+  reason: string;
+  score?: number | null;
+}
+
 export interface RawStockProjectRanking {
+  evidence?: RankingEvidence[];
   rank?: number;
   sector_name?: string;
   final_score?: number;
@@ -375,7 +385,9 @@ interface RawStockSummary {
   latest_close?: number;
 }
 
-interface RawRankingSnapshot {
+export interface RawRankingSnapshot {
+  window_end_ts?: number;
+  window_hours?: number;
   snapshot_id?: string;
   biz_date?: string;
   generated_at?: string;
@@ -700,10 +712,11 @@ export interface NewsItem {
   publishTime?: string;
   publishTs?: number;
   author: string;
-  sentiment: Sentiment;
+  sentiment: Sentiment | null;
+  scoreStatus?: 'pending' | 'unrelated' | 'unscored';
   relatedStocks: string[];
   relatedSectors?: string[];
-  impact: number;
+  impact: number | null;
   keyPoints: string[];
   analysisReason?: string;
   subjects?: string[];
@@ -717,6 +730,7 @@ export interface NewsPagination {
 }
 
 export interface NewsResponse {
+  snapshot?: number;
   tradeDate: string;
   items: NewsItem[];
   pagination: NewsPagination;
@@ -866,8 +880,8 @@ export interface TrendItem {
   rank: number;
   name: string;
   score: number;
-  change: number;
-  trend: 'up' | 'down';
+  change: number | null;
+  evidence?: RankingEvidence[];
   newsCount?: number;
 }
 
@@ -877,12 +891,15 @@ export interface TrendSeries {
 }
 
 export interface SectorTrendResponse {
+  asOf?: string;
+  windowHours?: number;
   bizDate: string;
   items: TrendItem[];
   series: TrendSeries[];
 }
 
 export interface HeatmapItem {
+  evidence?: RankingEvidence[];
   rank: number;
   name: string;
   count: number;
@@ -892,6 +909,8 @@ export interface HeatmapItem {
 }
 
 export interface NewsHeatmapResponse {
+  asOf?: string;
+  windowHours?: number;
   bizDate: string;
   items: HeatmapItem[];
   series: TrendSeries[];
@@ -1293,14 +1312,20 @@ export async function getCreatorOpinionAnalysis(
 }
 
 export function mapStockProjectNews(raw: RawStockProjectNews, index = 0): NewsItem {
-  const analyses = (raw.sector_llm_analysis ?? []).filter(
-    (item) => !!toText(item.sector_name),
-  );
-  const scored = analyses
-    .map((item) => ({ item, score: toNullableNumber(item.sector_llm_analysis?.score) ?? 0 }))
-    .sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
+  const rawAnalyses = raw.sector_llm_analysis ?? [];
+  const isPlaceholder = (name: string) => /^(不涉及[板版]块|暂无|无|未涉及)$/.test(name);
+  const analyses = rawAnalyses.filter(item => {
+    const name = toText(item.sector_name);
+    return name && !isPlaceholder(name);
+  });
+  const scored = analyses.flatMap(item => {
+    const score = toNullableNumber(item.sector_llm_analysis?.score);
+    return score === null ? [] : [{ item, score }];
+  }).sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
   const strongest = scored[0];
-  const impact = strongest?.score ?? 0;
+  const impact = strongest?.score ?? null;
+  const status = typeof raw.status === 'string' ? raw.status : raw.status?.status;
+  const unrelated = !analyses.length && rawAnalyses.some(item => /^不涉及[板版]块$/.test(toText(item.sector_name)));
   const reason = toText(strongest?.item.sector_llm_analysis?.reason);
   const sectors = uniqueStrings(analyses.map((item) => toText(item.sector_name)));
   const companies = uniqueStrings(
@@ -1321,7 +1346,8 @@ export function mapStockProjectNews(raw: RawStockProjectNews, index = 0): NewsIt
     publishTime: toText(raw.publish_time) || undefined,
     publishTs: publishTs || undefined,
     author: toText(raw.source, '系统'),
-    sentiment: normalizeSentiment(impact),
+    sentiment: impact === null ? null : normalizeSentiment(impact),
+    ...(impact === null ? { scoreStatus: unrelated ? 'unrelated' : status && status !== 'finished' ? 'pending' : 'unscored' } as const : {}),
     relatedStocks: companies,
     relatedSectors: sectors,
     impact,
@@ -1472,74 +1498,47 @@ async function fetchNewsPage(params?: Record<string, QueryValue>, options: Reque
   }, options);
 }
 
-export async function getNews(params: {
+interface NewsQuery {
+  aShareOnly?: boolean;
   tradeDate: string;
   windowDays?: NewsWindowDays;
   sector?: string;
   source?: string;
   search?: string;
   sentiment?: Sentiment | null;
-  sort?: string;
+  snapshot?: number;
+}
+
+function newsQuery(params: NewsQuery) {
+  const range = tradeDateUnixRange(params.tradeDate, params.windowDays ?? 1);
+  if (!range) throw new Error(`无效交易日: ${params.tradeDate}`);
+  return { start_ts: range.startTs, end_ts: range.endTs, keyword: params.search,
+    sector_name: params.sector, source: params.source, sentiment: params.sentiment,
+    a_share_only: params.aShareOnly || undefined, snapshot: params.snapshot };
+}
+
+export async function getNews(params: NewsQuery & {
+  sort?: 'time_asc' | 'time_desc' | 'impact_asc' | 'impact_desc';
   page?: number;
-  pageSize?: number | 'all';
-  days?: number;
+  pageSize?: number;
 }, options: RequestOptions = {}): Promise<NewsResponse> {
-  const tradeDateRange = tradeDateUnixRange(params.tradeDate, params.windowDays ?? 1);
-  if (!tradeDateRange) throw new Error(`无效交易日: ${params.tradeDate}`);
-  const query = {
-    source: params.source,
-    sector_name: params.sector,
-    keyword: params.search,
-    start_ts: tradeDateRange.startTs,
-    end_ts: tradeDateRange.endTs,
-  };
-  const raw = await fetchNewsPage(query, options);
-  const rawItems = [...(raw.items ?? [])];
-  const backendPageSize = Math.max(1, raw.page_size || NEWS_PAGE_SIZE);
-  const pageCount = Math.ceil((raw.total ?? rawItems.length) / backendPageSize);
-  // Filtering and sorting must cover the whole date window before UI pagination.
-  for (let backendPage = 2; backendPage <= pageCount; backendPage += 1) {
-    const next = await fetchNewsPage({ ...query, page: backendPage, page_size: backendPageSize }, options);
-    if (!next.items?.length) break;
-    rawItems.push(...next.items);
-  }
-  let items = Array.from(new Map(rawItems.map((item, index) => {
-    const mapped = mapStockProjectNews(item, index);
-    return [mapped.id, mapped] as const;
-  })).values());
+  const raw = await requestJson<PagedResponse<RawStockProjectNews> & { snapshot: number }>('/api/v1/news', {
+    page: params.page ?? 1, page_size: params.pageSize ?? 100, ...newsQuery(params),
+    view: 'feed', sort_by: params.sort?.startsWith('impact') ? 'score' : 'time',
+    sort_order: params.sort?.endsWith('asc') ? 'asc' : 'desc',
+  }, options);
+  const items = (raw.items ?? []).map(mapStockProjectNews);
+  return { tradeDate: params.tradeDate, snapshot: raw.snapshot, items, pagination: {
+    page: raw.page ?? params.page ?? 1, page_size: raw.page_size ?? params.pageSize ?? 100,
+    total: raw.total ?? items.length, returned: items.length,
+  } };
+}
 
-  items = items.filter((item) => {
-    const publishTs = item.publishTs ?? 0;
-    return publishTs >= tradeDateRange.startTs && publishTs <= tradeDateRange.endTs;
-  });
-  if (params.sentiment) {
-    items = items.filter((item) => item.sentiment === params.sentiment);
-  }
-  if (params.sort === 'impact_desc') {
-    items.sort((a, b) => b.impact - a.impact);
-  } else if (params.sort === 'impact_asc') {
-    items.sort((a, b) => a.impact - b.impact);
-  } else if (params.sort === 'time_asc') {
-    items.sort((a, b) => (a.publishTs ?? 0) - (b.publishTs ?? 0));
-  } else {
-    items.sort((a, b) => (b.publishTs ?? 0) - (a.publishTs ?? 0));
-  }
-
-  const page = Math.max(1, params.page ?? 1);
-  const pageSize = params.pageSize === 'all' ? Math.max(1, items.length) : Math.max(1, params.pageSize ?? 50);
-  const start = (page - 1) * pageSize;
-  const pageItems = items.slice(start, start + pageSize);
-
-  return {
-    tradeDate: params.tradeDate,
-    items: pageItems,
-    pagination: {
-      page,
-      page_size: pageSize,
-      total: items.length,
-      returned: pageItems.length,
-    },
-  };
+export async function getNewsUpdates(params: NewsQuery & { snapshot: number }, options: RequestOptions = {}) {
+  const result = await requestJson<{ total: number }>('/api/v1/news', {
+    ...newsQuery(params), view: 'updates',
+  }, options);
+  return result.total;
 }
 
 export async function getNewsSentimentOverview(tradeDate: string): Promise<NewsSentimentOverview> {
@@ -1554,6 +1553,7 @@ export async function getNewsSentimentOverview(tradeDate: string): Promise<NewsS
   const previous = { positive: 0, neutral: 0, negative: 0 };
 
   items.forEach((item) => {
+    if (!item.sentiment) return;
     const timestamp = item.publishTs ?? 0;
     if (timestamp >= currentStart && timestamp <= endTs) current[item.sentiment] += 1;
     else if (timestamp >= previousStart && timestamp < currentStart) previous[item.sentiment] += 1;
@@ -1665,17 +1665,19 @@ export async function getPreopenAnalysis(analysisDate: string | null): Promise<P
 }
 
 function rankingGeneratedTimestamp(snapshot: RawRankingSnapshot): number {
+  if (snapshot.window_end_ts) return snapshot.window_end_ts * 1000;
   const generatedAt = toText(snapshot.generated_at);
   if (!generatedAt) return 0;
   const zoned = /(?:Z|[+-]\d{2}:?\d{2})$/.test(generatedAt)
     ? generatedAt
-    : `${generatedAt}+08:00`;
+    : `${generatedAt}Z`;
   const parsed = Date.parse(zoned);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function rankingPointLabel(snapshot: RawRankingSnapshot): string {
-  return toText(snapshot.generated_at).replace('T', ' ').slice(0, 16) || toText(snapshot.biz_date);
+  const stamp = rankingGeneratedTimestamp(snapshot);
+  return stamp ? new Date(stamp + 8 * 3600_000).toISOString().slice(0, 16).replace('T', ' ') : '';
 }
 
 function selectRankingSnapshots(
@@ -1707,13 +1709,12 @@ function selectRankingSnapshots(
   });
 }
 
-async function getRankingSnapshots(bizDate: string, window: RankingWindow): Promise<RawRankingSnapshot[]> {
+export async function getRankingHistory(bizDate: string): Promise<RawRankingSnapshot[]> {
   try {
-    const response = await requestJson<PagedResponse<RawRankingSnapshot>>('/api/v1/news-rankings', {
-      page: 1,
-      page_size: 200,
+    const response = await requestJson<PagedResponse<RawRankingSnapshot>>('/api/v1/news-rankings/history', {
+      end_date: bizDate,
     });
-    return selectRankingSnapshots(response.items ?? [], bizDate, window);
+    return response.items ?? [];
   } catch (error) {
     if (error instanceof Error && /接口请求失败:\s*404\b/.test(error.message)) return [];
     throw error;
@@ -1738,27 +1739,22 @@ function buildRankingSeries(
 export async function getSectorTrend(
   bizDate: string,
   window: RankingWindow = 'day',
+  loadHistory = getRankingHistory,
 ): Promise<SectorTrendResponse> {
-  const snapshots = await getRankingSnapshots(bizDate, window);
+  const snapshots = selectRankingSnapshots(await loadHistory(bizDate), bizDate, window);
   const latest = snapshots.at(-1) ?? {};
   const mapped = (latest.investment_ranking ?? []).map(mapStockProjectRanking);
-  const first = snapshots[0]?.investment_ranking ?? [];
+  const first = snapshots.length > 1 ? snapshots[0].investment_ranking : [];
   return {
     bizDate,
-    items: mapped.map((item) => ({
-      rank: item.rank,
-      name: item.name,
-      score: item.score,
-      change: item.score - toNumber(
-        first.find((candidate) => toText(candidate.sector_name) === item.name)?.final_score,
-        item.score,
-      ),
-      trend: item.score - toNumber(
-        first.find((candidate) => toText(candidate.sector_name) === item.name)?.final_score,
-        item.score,
-      ) >= 0 ? 'up' : 'down',
-      newsCount: item.newsCount,
-    })),
+    ...(snapshots.length ? { asOf: rankingPointLabel(latest), windowHours: latest.window_hours } : {}),
+    items: mapped.map((item, index) => {
+      const prior = first?.find(candidate => candidate.sector_name === item.name);
+      const previousScore = toNullableNumber(prior?.final_score);
+      return { rank: item.rank, name: item.name, score: item.score, newsCount: item.newsCount,
+        change: previousScore === null ? null : item.score - previousScore,
+        evidence: latest.investment_ranking?.[index].evidence ?? [] };
+    }),
     series: buildRankingSeries(snapshots, 'investment_ranking', mapped.map((item) => item.name)),
   };
 }
@@ -1766,13 +1762,16 @@ export async function getSectorTrend(
 export async function getNewsHeatmap(
   bizDate: string,
   window: RankingWindow = 'day',
+  loadHistory = getRankingHistory,
 ): Promise<NewsHeatmapResponse> {
-  const snapshots = await getRankingSnapshots(bizDate, window);
+  const snapshots = selectRankingSnapshots(await loadHistory(bizDate), bizDate, window);
   const latest = snapshots.at(-1) ?? {};
   const mapped = (latest.heat_ranking ?? []).map(mapStockProjectRanking);
   return {
     bizDate,
-    items: mapped.map((item) => ({
+    ...(snapshots.length ? { asOf: rankingPointLabel(latest), windowHours: latest.window_hours } : {}),
+    items: mapped.map((item, index) => ({
+      evidence: latest.heat_ranking?.[index].evidence ?? [],
       rank: item.rank,
       name: item.name,
       count: item.newsCount,

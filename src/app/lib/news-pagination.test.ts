@@ -3,19 +3,20 @@ import { getNews } from './api';
 
 afterEach(() => vi.unstubAllGlobals());
 
-it('includes later backend pages before filtering, sorting and slicing the UI page', async () => {
-  const requests: URL[] = [];
-  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
-    const url = new URL(input, 'http://localhost');
-    requests.push(url);
-    const page = Number(url.searchParams.get('page'));
-    return new Response(JSON.stringify({ total: 3, page_size: 2, items: page === 1 ? [
-      { event_id: 'first', title: '较新资讯', publish_ts: 1786090000 },
-      { event_id: 'second', title: '最新资讯', publish_ts: 1786100000 },
-    ] : [{ event_id: 'third', title: '最早资讯', publish_ts: 1786080000 }] }));
-  }));
-  const response = await getNews({ tradeDate: '2026-08-07', sort: 'time_asc', page: 1, pageSize: 1 });
-  expect(requests.map((url) => url.searchParams.get('page'))).toEqual(['1', '2']);
-  expect(response.items.map((item) => item.title)).toEqual(['最早资讯']);
+it('requests one server-sorted page with a stable snapshot and filtered total', async () => {
+  const fetch = vi.fn(async () => new Response(JSON.stringify({
+    page: 2, page_size: 1, total: 3, snapshot: 123,
+    items: [{ event_id: 'hit', title: '新闻标题', publish_ts: 1786080000 }],
+  })));
+  vi.stubGlobal('fetch', fetch);
+  const response = await getNews({ tradeDate: '2026-08-07', search: '通信设备', sort: 'impact_asc',
+    page: 2, pageSize: 1, snapshot: 123, sentiment: 'negative' });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const url = String(vi.mocked(globalThis.fetch).mock.calls[0][0]);
+  expect(Object.fromEntries(new URL(url, 'http://localhost').searchParams)).toMatchObject({
+    page: '2', page_size: '1', keyword: '通信设备', sort_by: 'score', sort_order: 'asc',
+    snapshot: '123', sentiment: 'negative', view: 'feed',
+  });
   expect(response.pagination.total).toBe(3);
+  expect(response.items[0].id).toBe('hit');
 });

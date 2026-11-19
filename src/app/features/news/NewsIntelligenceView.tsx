@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowLeft, Clock3, Search, X } from 'lucide-react';
-import { getNews, type NewsWindowDays, type NewsItem, type Sentiment } from '../../lib/api';
+import { getNews, getNewsUpdates, type NewsWindowDays, type NewsItem, type Sentiment } from '../../lib/api';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useWorkspaceState } from '../../hooks/useWorkspaceState';
 import { SelectionGroup, SelectionIndicator } from '../../components/StudioMotion';
 import { NewsArticle, scoreText, sentimentLabel } from './NewsArticle';
-import { sortNews, type NewsSortField, type SortDirection } from './news-state';
+import type { NewsSortField, SortDirection } from './news-state';
 
 interface NewsIntelligenceViewProps { tradeDate: string }
 const PAGE_SIZE = 100;
@@ -16,12 +16,17 @@ export function NewsIntelligenceView({ tradeDate }: NewsIntelligenceViewProps) {
   const [selectedId, setSelectedId] = useWorkspaceState('news.selected', '');
   const [search, setSearch] = useWorkspaceState('news.search', '');
   const [sentiment, setSentiment] = useWorkspaceState<Sentiment | null>('news.sentiment', null);
+  const [aShareOnly, setAShareOnly] = useWorkspaceState('news.aShareOnly', false);
   const [windowDays, setWindowDays] = useWorkspaceState<NewsWindowDays>('news.window', 1);
   const [sortField, setSortField] = useWorkspaceState<NewsSortField>('news.sort', 'time');
   const [sortDirection, setSortDirection] = useWorkspaceState<SortDirection>('news.direction', 'desc');
   const [page, setPage] = useWorkspaceState('news.page', 1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
+  const [loaded, setLoaded] = useState<{ key: string; snapshot?: number }>();
+  const [newCount, setNewCount] = useState(0);
+  const anchor = useRef<{ key: string; value: number } | null>(null);
   const [reload, setReload] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
   const compact = useMediaQuery('(max-width: 1125px)');
@@ -29,7 +34,15 @@ export function NewsIntelligenceView({ tradeDate }: NewsIntelligenceViewProps) {
   const streamRef = useRef<HTMLElement>(null);
   const detailTrigger = useRef<HTMLButtonElement | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const hasFilters = Boolean(search || sentiment || windowDays !== 1);
+  const hasFilters = Boolean(search || sentiment || aShareOnly || windowDays !== 1);
+  const keyword = search.trim();
+  const queryKey = JSON.stringify([tradeDate, windowDays, keyword, sentiment, aShareOnly]);
+  const refresh = () => {
+    anchor.current = null;
+    setNewCount(0);
+    setPage(1);
+    setReload(value => value + 1);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -39,10 +52,16 @@ export function NewsIntelligenceView({ tradeDate }: NewsIntelligenceViewProps) {
     setDetailOpen(false);
     const timer = window.setTimeout(() => {
       void getNews({
-        tradeDate, windowDays, search: search.trim() || undefined, sentiment: null,
-        page: 1, pageSize: 'all',
+        tradeDate, windowDays, search: keyword || undefined, sentiment, aShareOnly,
+        sort: `${sortField === 'score' ? 'impact' : 'time'}_${sortDirection}`, page, pageSize: PAGE_SIZE,
+        snapshot: anchor.current?.key === queryKey ? anchor.current.value : undefined,
       }, { signal: controller.signal }).then((response) => {
         if (cancelled) return;
+        const lastPage = Math.max(1, Math.ceil(response.pagination.total / PAGE_SIZE));
+        setTotal(response.pagination.total);
+        setLoaded({ key: queryKey, snapshot: response.snapshot });
+        if (response.snapshot !== undefined) anchor.current = { key: queryKey, value: response.snapshot };
+        if (page > lastPage) setPage(lastPage);
         setItems(response.items);
         setSelectedId((current) => response.items.some((item) => item.id === current) ? current : '');
         if (streamRef.current) streamRef.current.scrollTop = 0;
@@ -51,22 +70,41 @@ export function NewsIntelligenceView({ tradeDate }: NewsIntelligenceViewProps) {
         setItems([]);
         setError(reason instanceof Error ? reason.message : '资讯加载失败');
       }).finally(() => { if (!cancelled) setLoading(false); });
-    }, 180);
+    }, keyword ? 180 : 0);
     return () => { cancelled = true; window.clearTimeout(timer); controller.abort(); };
-  }, [search, tradeDate, windowDays, reload]);
+  }, [keyword, tradeDate, windowDays, sentiment, aShareOnly, sortField, sortDirection, page, reload, queryKey]);
 
-  const sortedItems = useMemo(() => sortNews(
-    sentiment ? items.filter((item) => item.sentiment === sentiment) : items,
-    sortField, sortDirection,
-  ), [items, sentiment, sortField, sortDirection]);
-  const total = sortedItems.length;
-  const displayItems = sortedItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const selected = displayItems.find((item) => item.id === selectedId) ?? displayItems[0] ?? null;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const snapshot = loaded?.key === queryKey ? loaded.snapshot : undefined;
 
+  // 仅轮询新增数量，读者点提示后才切换快照和阅读位置。
   useEffect(() => {
-    if (!loading && !error && page > totalPages) setPage(totalPages);
-  }, [loading, error, page, totalPages]);
+    setNewCount(0);
+    if (snapshot === undefined || anchor.current?.key !== queryKey) return;
+    const controller = new AbortController();
+    let busy = false;
+    async function check() {
+      if (document.hidden || busy || controller.signal.aborted || snapshot === undefined) return;
+      busy = true;
+      try {
+        const count = await getNewsUpdates({ tradeDate, windowDays, sentiment, aShareOnly,
+          search: keyword || undefined, snapshot }, { signal: controller.signal });
+        if (!controller.signal.aborted) setNewCount(count);
+      } catch {
+        // 临时网络失败时保留已读列表，下次轮询重试。
+      } finally { busy = false; }
+    }
+    const timer = window.setInterval(check, 30_000);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, [snapshot, queryKey, keyword, tradeDate, windowDays, sentiment, aShareOnly]);
+
+  const displayItems = items;
+  const selected = items.find(item => item.id === selectedId) ?? items[0] ?? null;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => {
     if (streamRef.current) streamRef.current.scrollTop = 0;
@@ -78,7 +116,7 @@ export function NewsIntelligenceView({ tradeDate }: NewsIntelligenceViewProps) {
   }, [selected?.id]);
 
   const clearSearch = () => { setSearch(''); setPage(1); searchRef.current?.focus(); };
-  const clearFilters = () => { setSearch(''); setSentiment(null); setWindowDays(1); setPage(1); };
+  const clearFilters = () => { setSearch(''); setSentiment(null); setWindowDays(1); setAShareOnly(false); setPage(1); };
 
   return (
     <main className="news-intelligence-view">
@@ -98,6 +136,8 @@ export function NewsIntelligenceView({ tradeDate }: NewsIntelligenceViewProps) {
               onClick={() => { setSentiment(option.value); setPage(1); }}>{option.label}<SelectionIndicator active={sentiment === option.value} /></button>
           ))}
         </div></SelectionGroup>
+        <button type="button" className="terminal-button" aria-pressed={aShareOnly}
+          onClick={() => { setAShareOnly(!aShareOnly); setPage(1); }}>仅看 A 股相关</button>
         <div className="news-sort-controls">
           <div className="news-sort-field" aria-label="资讯排序字段">
             {(['time', 'score'] as const).map((field) => (
@@ -131,8 +171,10 @@ export function NewsIntelligenceView({ tradeDate }: NewsIntelligenceViewProps) {
           <div className="news-stream-head">
             <span>资讯流</span>
             <div className="news-stream-actions">
+              {newCount > 0 && !loading && <button type="button" className="terminal-button"
+                onClick={refresh}>有 {newCount} 条新资讯 · 查看</button>}
               <small>{loading ? '更新中' : error ? '加载失败' : `共 ${total} 条`}</small>
-              <button type="button" className="terminal-button" disabled={loading} onClick={() => setReload((value) => value + 1)}>刷新资讯</button>
+              <button type="button" className="terminal-button" disabled={loading} onClick={refresh}>刷新资讯</button>
             </div>
           </div>
           {loading && <div className="terminal-empty" role="status"><span className="loading-pulse" />正在加载资讯...</div>}
@@ -153,8 +195,8 @@ export function NewsIntelligenceView({ tradeDate }: NewsIntelligenceViewProps) {
               onClick={(event) => { detailTrigger.current = event.currentTarget; setSelectedId(item.id); setDetailOpen(true); }}>
               <div className="news-item-meta">
                 <span><Clock3 size={11} />{item.time || item.publishTime || '--'}</span><span>{item.source}</span>
-                <span className={`sentiment-pill sentiment-${item.sentiment}`}>{sentimentLabel(item.sentiment)}</span>
-                <b className={item.impact >= 0 ? 'market-rise' : 'market-fall'}>{scoreText(item.impact)}</b>
+                <span className={`sentiment-pill sentiment-${item.sentiment}`}>{sentimentLabel(item)}</span>
+                {item.impact !== null && <b className={item.impact > 0 ? 'market-rise' : item.impact < 0 ? 'market-fall' : ''}>{scoreText(item.impact)}</b>}
               </div>
               <h3>{item.title}</h3><p>{item.summary}</p>
               {(item.relatedSectors?.length ?? 0) > 0 && (

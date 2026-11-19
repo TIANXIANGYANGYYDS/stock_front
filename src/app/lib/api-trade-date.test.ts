@@ -288,7 +288,7 @@ describe('latest trading date API contract', () => {
     const response = await getSectorTrend('2026-08-07', '3day');
 
     expect(requests).toEqual([
-      '/backend-api/api/v1/news-rankings?page=1&page_size=200',
+      '/backend-api/api/v1/news-rankings/history?end_date=2026-08-07',
     ]);
     expect(response.items.map((item) => [item.name, item.score, item.change])).toEqual([
       ['半导体', 82, 12],
@@ -296,10 +296,23 @@ describe('latest trading date API contract', () => {
     expect(response.series).toEqual([{
       name: '半导体',
       data: [
-        { date: '2026-08-05 15:58', value: 70 },
-        { date: '2026-08-07 15:58', value: 82 },
+        { date: '2026-08-05 23:58', value: 70 },
+        { date: '2026-08-07 23:58', value: 82 },
       ],
     }]);
+  });
+
+  it('uses the real Shanghai cutoff and compares only sectors present in both snapshots', async () => {
+    const latest = { biz_date: '2026-11-19', window_end_ts: 1795100626,
+      generated_at: '2026-11-19T15:03:46', window_hours: 72,
+      investment_ranking: [{ sector_name: '通信设备', final_score: 80, evidence: [{ event_id: 'e1', title: '来源稿件', source: 'cls', publish_time: '2026-11-19 14:00', reason: '行业新闻' }] }] };
+    const early = { ...latest, window_end_ts: 1795047599 };
+    const history = async () => [early, latest];
+    const hour = await getSectorTrend('2026-11-19', 'hour', history);
+    expect(hour.asOf).toBe('2026-11-19 23:03');
+    expect(hour.items[0]).toMatchObject({ change: null, evidence: [{ title: '来源稿件' }] });
+    const day = await getSectorTrend('2026-11-19', 'day', history);
+    expect(day.items[0].change).toBe(0);
   });
 
   it('keeps the requested trading date when the ranking response is empty', async () => {
@@ -317,7 +330,7 @@ describe('latest trading date API contract', () => {
       items: [],
       series: [],
     });
-    expect(requests).toEqual(['/backend-api/api/v1/news-rankings?page=1&page_size=200']);
+    expect(requests).toEqual(['/backend-api/api/v1/news-rankings/history?end_date=2026-08-07']);
   });
 
   it('treats a missing dated ranking as empty data without retrying latest', async () => {
@@ -335,7 +348,7 @@ describe('latest trading date API contract', () => {
       items: [],
       series: [],
     });
-    expect(requests).toEqual(['/backend-api/api/v1/news-rankings?page=1&page_size=200']);
+    expect(requests).toEqual(['/backend-api/api/v1/news-rankings/history?end_date=2026-08-07']);
   });
 
   it('limits the default news request to the resolved latest trading date', async () => {
@@ -352,7 +365,7 @@ describe('latest trading date API contract', () => {
 
     expect(response.tradeDate).toBe('2026-08-07');
     expect(requests).toEqual([
-      '/backend-api/api/v1/news?page=1&page_size=200&start_ts=1786032000&end_ts=1786118399',
+      '/backend-api/api/v1/news?page=1&page_size=100&start_ts=1786032000&end_ts=1786118399&view=feed&sort_by=time&sort_order=desc',
     ]);
   });
 
@@ -369,7 +382,7 @@ describe('latest trading date API contract', () => {
     await getNews({ tradeDate: '2026-08-07', windowDays: 7 });
 
     expect(requests).toEqual([
-      '/backend-api/api/v1/news?page=1&page_size=200&start_ts=1785513600&end_ts=1786118399',
+      '/backend-api/api/v1/news?page=1&page_size=100&start_ts=1785513600&end_ts=1786118399&view=feed&sort_by=time&sort_order=desc',
     ]);
   });
 

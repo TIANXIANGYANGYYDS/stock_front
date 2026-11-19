@@ -43,6 +43,17 @@ describe('Stock Project API mappers', () => {
     expect(item.analysisReason).toContain('订单增长');
   });
 
+  it('distinguishes missing and unrelated scores from a real neutral zero', () => {
+    expect(mapStockProjectNews({ status: { status: 'crawled' } })).toMatchObject({
+      impact: null, sentiment: null, scoreStatus: 'pending',
+    });
+    expect(mapStockProjectNews({ sector_llm_analysis: [{ sector_name: '不涉及版块' }] })).toMatchObject({
+      impact: null, sentiment: null, relatedSectors: [], scoreStatus: 'unrelated',
+    });
+    expect(mapStockProjectNews({ sector_llm_analysis: [{ sector_name: '通信设备', sector_llm_analysis: { score: 0 } }] }))
+      .toMatchObject({ impact: 0, sentiment: 'neutral' });
+  });
+
   it('maps ranking score and real counts without inventing history', () => {
     const result = mapStockProjectRanking({
       rank: 2,

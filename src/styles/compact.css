@@ -86,3 +86,14 @@
   .studio-shell .chart-periods button { min-height: 34px; }
   .sent-focus-main .sent-theme-card { padding-inline: 12px; }
 }
+
+.ranking-change { display: flex; align-items: center; justify-content: flex-end; gap: 3px; font-size: 10px; color: var(--terminal-muted); }
+.ranking-evidence { padding: 12px 16px; border-bottom: 1px solid var(--terminal-border); }
+.ranking-evidence h4 { color: var(--terminal-text); font-size: 14px; }
+.ranking-evidence li { margin-top: 8px; }
+.ranking-evidence strong, .ranking-evidence small { display: block; }
+.ranking-evidence strong { color: var(--terminal-text); font-size: 13px; }
+.ranking-evidence p, .ranking-evidence small { color: var(--terminal-muted); font-size: 12px; }
+
+.news-stream-actions { flex-wrap: wrap; justify-content: flex-end; }
+.news-filter-bar > .terminal-button[aria-pressed="true"] { color: var(--terminal-accent); background: var(--terminal-accent-soft); }

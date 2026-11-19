@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const apiMocks = vi.hoisted(() => ({
+  getNewsUpdates: vi.fn().mockResolvedValue(2),
   getNews: vi.fn().mockResolvedValue({
     tradeDate: '2026-08-07',
     items: [],
@@ -14,6 +15,7 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock('../../lib/api', () => ({
   getNews: apiMocks.getNews,
+  getNewsUpdates: apiMocks.getNewsUpdates,
 }));
 
 import { NewsIntelligenceView } from './NewsIntelligenceView';
@@ -28,30 +30,29 @@ afterEach(() => {
 });
 
 describe('NewsIntelligenceView controls', () => {
-  it('paginates and sorts the complete loaded window without fetching it again', async () => {
+  it('requests the selected server page and waits for the reader to accept new items', async () => {
     vi.useFakeTimers();
-    apiMocks.getNews.mockResolvedValueOnce({
-      tradeDate: '2026-08-07',
-      items: Array.from({ length: 201 }, (_, index) => ({
-        id: String(index), title: `资讯${index}`, content: `正文${index}`, summary: '', source: '测试来源',
-        publishTs: 1000 - index, impact: index, sentiment: 'positive', keyPoints: [], relatedStocks: [],
-      })),
-      pagination: { page: 1, page_size: 201, total: 201, returned: 201 },
-    });
+    const response = { snapshot: 123, items: [{ id: '1', title: '正在阅读',
+      content: '正文', summary: '', source: '测试', impact: 5, sentiment: 'neutral', keyPoints: [], relatedStocks: [] }],
+      pagination: { page: 1, page_size: 100, total: 201, returned: 1 } };
+    apiMocks.getNews.mockResolvedValueOnce(response).mockResolvedValueOnce(response);
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
     await act(async () => root.render(<NewsIntelligenceView tradeDate="2026-08-07" />));
-    await act(async () => vi.advanceTimersByTimeAsync(180));
-    const button = (label: string) => [...host.querySelectorAll('button')].find((item) => item.textContent?.trim() === label)!;
-    expect(host.querySelectorAll('.news-stream-item')).toHaveLength(100);
-    expect(host.textContent).toContain('共 201 条');
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    const button = (label: string) => [...host.querySelectorAll('button')].find(item => item.textContent?.trim() === label)!;
     await act(async () => button('下一页').click());
-    expect(host.querySelector('.news-stream-item h3')?.textContent).toBe('资讯100');
-    await act(async () => button('按评分').click());
-    expect(host.querySelector('.news-pagination')?.textContent).toContain('1 / 3');
-    expect(host.querySelector('.news-stream-item h3')?.textContent).toBe('资讯200');
-    expect(apiMocks.getNews).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(apiMocks.getNews).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, snapshot: 123 }), expect.anything());
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    expect(apiMocks.getNewsUpdates).toHaveBeenCalled();
+    expect(host.textContent).toContain('有 2 条新资讯');
+    expect(host.textContent).toContain('正在阅读');
+    expect(apiMocks.getNews).toHaveBeenCalledTimes(2);
+    await act(async () => button('有 2 条新资讯 · 查看').click());
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(apiMocks.getNews).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, snapshot: undefined }), expect.anything());
     await act(async () => root.unmount());
   });
 
@@ -130,14 +131,14 @@ describe('NewsIntelligenceView controls', () => {
       await vi.advanceTimersByTimeAsync(180);
     });
 
-    expect(apiMocks.getNews).toHaveBeenLastCalledWith({
+    expect(apiMocks.getNews).toHaveBeenLastCalledWith(expect.objectContaining({
       tradeDate: '2026-08-07',
       windowDays: 1,
       search: '中际旭创',
       sentiment: null,
       page: 1,
-      pageSize: 'all',
-    }, { signal: expect.any(AbortSignal) });
+      pageSize: 100,
+    }), { signal: expect.any(AbortSignal) });
 
     await act(async () => root.unmount());
   });

@@ -48,7 +48,7 @@ describe('MarketInsightsView ranking windows', () => {
     await act(async () => threeDay.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
     expect(threeDay.className).toContain('is-active');
-    expect(host.textContent).toContain('排名窗口：3天');
+    expect(host.textContent).toContain('观察窗口：3天');
 
     await act(async () => root.unmount());
   });

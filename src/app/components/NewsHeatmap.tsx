@@ -1,4 +1,5 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { RankingEvidence } from '../features/market/RankingEvidence';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   LineChart,
   Line,
@@ -10,10 +11,11 @@ import {
   Legend,
 } from 'recharts';
 import { Flame } from 'lucide-react';
-import { getNewsHeatmap, type NewsHeatmapResponse, type RankingWindow, type TrendSeries } from '../lib/api';
+import { getNewsHeatmap, type NewsHeatmapResponse, type RawRankingSnapshot, type RankingWindow, type TrendSeries } from '../lib/api';
 
 interface NewsHeatmapProps {
   bizDate: string;
+  loadHistory: (date: string) => Promise<RawRankingSnapshot[]>;
   window: RankingWindow;
   onSectorClick: (sector: string | null) => void;
   selectedSector: string | null;
@@ -41,7 +43,7 @@ function buildChartData(series: TrendSeries[]) {
     .map(([, value]) => value);
 }
 
-export function NewsHeatmap({ bizDate, window, onSectorClick, selectedSector }: NewsHeatmapProps) {
+export function NewsHeatmap({ bizDate, window, onSectorClick, selectedSector, loadHistory }: NewsHeatmapProps) {
   const [data, setData] = useState<NewsHeatmapResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +56,7 @@ export function NewsHeatmap({ bizDate, window, onSectorClick, selectedSector }: 
       setLoading(true);
       setError(null);
       try {
-        const response = await getNewsHeatmap(bizDate, window);
+        const response = await getNewsHeatmap(bizDate, window, loadHistory);
         if (!cancelled) {
           setData(response);
         }
@@ -75,13 +77,13 @@ export function NewsHeatmap({ bizDate, window, onSectorClick, selectedSector }: 
     return () => {
       cancelled = true;
     };
-  }, [bizDate, window, reload]);
+  }, [bizDate, window, reload, loadHistory]);
 
   const hotSectors = data?.items ?? [];
   const baseSeries = data?.series ?? [];
 
-  const hasSelected = !!selectedSector && hotSectors.some((s) => s.name === selectedSector);
-  const displaySeries = hasSelected
+  const selected = hotSectors.find(item => item.name === selectedSector);
+  const displaySeries = selected
     ? baseSeries.filter((s) => s.name === selectedSector)
     : baseSeries.slice(0, 5);
   const displayChartData = useMemo(() => buildChartData(displaySeries), [displaySeries]);
@@ -118,7 +120,7 @@ export function NewsHeatmap({ bizDate, window, onSectorClick, selectedSector }: 
           <Flame className="w-4 h-4 text-orange-400" />
           <h3 className="text-sm text-white">板块新闻热度</h3>
         </div>
-        <p className="text-xs text-slate-500 mt-1">Stock_Project 资讯热度与情绪 · {bizDate}</p>
+        <p className="text-xs text-slate-500 mt-1">{data?.windowHours && `滚动 ${data.windowHours} 小时统计 · `}{data?.asOf ? `截至 ${data.asOf} 北京时间` : bizDate}</p>
       </div>
 
       <div className="p-5">
@@ -165,38 +167,41 @@ export function NewsHeatmap({ bizDate, window, onSectorClick, selectedSector }: 
           </div>
           <div className="divide-y divide-slate-700/30">
             {hotSectors.map((sector) => (
-              <div
-                key={`${sector.rank}-${sector.name}`}
-                role="button"
-                tabIndex={0}
-                aria-pressed={selectedSector === sector.name}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    onSectorClick(selectedSector === sector.name ? null : sector.name);
-                  }
-                }}
-                className={`grid grid-cols-5 gap-px cursor-pointer transition-colors ${
-                  selectedSector === sector.name ? 'bg-blue-500/20' : 'bg-slate-800/20 hover:bg-slate-800/40'
-                }`}
-                onClick={() => onSectorClick(selectedSector === sector.name ? null : sector.name)}
-              >
-                <div className="px-3 py-2.5 text-xs text-slate-400">#{sector.rank}</div>
+              <Fragment key={sector.name}>
                 <div
-                  className={`px-3 py-2.5 text-sm col-span-2 ${
-                    selectedSector === sector.name ? 'text-blue-300' : 'text-slate-200'
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selectedSector === sector.name}
+                  aria-expanded={selectedSector === sector.name}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onSectorClick(selectedSector === sector.name ? null : sector.name);
+                    }
+                  }}
+                  className={`grid grid-cols-5 gap-px cursor-pointer transition-colors ${
+                    selectedSector === sector.name ? 'bg-blue-500/20' : 'bg-slate-800/20 hover:bg-slate-800/40'
                   }`}
+                  onClick={() => onSectorClick(selectedSector === sector.name ? null : sector.name)}
                 >
-                  {sector.name}
+                  <div className="px-3 py-2.5 text-xs text-slate-400">#{sector.rank}</div>
+                  <div
+                    className={`px-3 py-2.5 text-sm col-span-2 ${
+                      selectedSector === sector.name ? 'text-blue-300' : 'text-slate-200'
+                    }`}
+                  >
+                    {sector.name}
+                  </div>
+                  <div className="px-3 py-2.5 text-right">
+                    <div className="text-sm text-white">{sector.count}</div>
+                    {sector.score !== undefined && <div className="text-xs text-slate-500">评分 {sector.score.toFixed(2)}</div>}
+                  </div>
+                  <div className="px-3 py-2.5 flex items-center justify-center">
+                    {getSentimentBadge(sector.avgSentiment)}
+                  </div>
                 </div>
-                <div className="px-3 py-2.5 text-right">
-                  <div className="text-sm text-white">{sector.count}</div>
-                  {sector.score !== undefined && <div className="text-xs text-slate-500">评分 {sector.score.toFixed(2)}</div>}
-                </div>
-                <div className="px-3 py-2.5 flex items-center justify-center">
-                  {getSentimentBadge(sector.avgSentiment)}
-                </div>
-              </div>
+                {selectedSector === sector.name && <RankingEvidence sector={sector.name} items={sector.evidence ?? []} />}
+              </Fragment>
             ))}
 
             {!loading && !error && !hotSectors.length && (
