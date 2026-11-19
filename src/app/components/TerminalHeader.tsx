@@ -129,7 +129,7 @@ export function TerminalHeader({
         </div>
       </aside>
       <div className="terminal-topbar">
-        <div className="studio-view-heading"><span>工作空间 <i>/</i> {currentView.label}</span><strong>{descriptions[activeView]}</strong></div>
+        <div className="studio-view-heading"><span><span className="studio-breadcrumb-prefix">工作空间 <i>/</i> </span>{currentView.label}</span><strong>{descriptions[activeView]}</strong></div>
         <div className="terminal-actions">
           {onOpenPanorama && <button type="button" className="studio-panorama-trigger" onClick={onOpenPanorama} aria-label="打开活跃股速览" title="比较成交额前 50 只股票的涨跌、排名，一键进入 K 线"><BarChart3 size={17} /><span>活跃股速览</span></button>}
           {onOpenCommands && <button type="button" className="studio-command-trigger" onClick={onOpenCommands} aria-label="打开指令中心" aria-keyshortcuts="Control+k Meta+k" title="指令中心（Ctrl / ⌘ + K）"><Search size={17} /><span>快速查找</span><kbd>⌘ / Ctrl K</kbd></button>}

@@ -1,0 +1,88 @@
+/* 页头与主区域共用高度，收紧留白后图表仍按实际容器尺寸绘制。 */
+.studio-shell {
+  --topbar-height: 56px;
+  --ticker-height: 58px;
+  --studio-header-height: calc(var(--topbar-height) + var(--ticker-height) + 4px);
+  --page-inset: 16px;
+}
+.studio-shell:not([data-workspace="decision"]) { --studio-header-height: var(--topbar-height); }
+.studio-header .terminal-topbar { height: var(--topbar-height); }
+.studio-header .market-index-strip {
+  height: var(--ticker-height);
+  grid-template-rows: minmax(0, 1fr);
+}
+.studio-header .index-ticker { padding: 2px 9px; row-gap: 1px; }
+.studio-header .market-session { gap: 2px; }
+.studio-shell > .terminal-main { padding: 10px var(--page-inset) 14px; }
+.studio-shell .panel-title-row,
+.studio-shell .stock-navigator .panel-title-row { min-height: 50px; padding: 6px 12px; }
+.studio-shell .panel-title-row h2 { font-size: 16px; }
+.studio-shell .stock-list-caption { padding: 4px 12px; }
+.studio-shell .decision-grid { gap: 8px; }
+.studio-shell .navigator-stock-row { min-height: 58px; padding: 3px 8px; row-gap: 1px; }
+.studio-shell .stock-quote-head { padding: 9px 12px; gap: 6px; }
+.studio-shell .stock-price-row { margin-top: 4px; }
+.studio-shell .stock-price-row > span { font-size: 30px; }
+.studio-shell .stock-live-state { margin-top: 4px; }
+.studio-shell .chart-toolbar { padding: 5px 12px; gap: 4px; }
+.studio-shell .indicator-legend-board { padding: 4px 12px; }
+.studio-shell .decision-stock-line { padding: 9px 12px; }
+.studio-shell .decision-section { margin-inline: 12px; padding-block: 10px; }
+.studio-shell .decision-section h3 { margin-bottom: 8px; }
+.studio-shell .snapshot-grid { gap: 8px 12px; }
+.studio-shell .news-stream-head { padding: 10px 14px; }
+.studio-shell .news-stream-item { padding: 12px 14px; }
+.studio-shell .market-brief-context { padding: 14px; }
+.studio-shell .creator-filter-bar { padding: 8px 10px; }
+.studio-shell .quant-runtime-heading { min-height: 66px; padding: 12px 16px; }
+.studio-shell .quant-section-head { min-height: 48px; padding: 8px 14px; }
+.studio-shell .quant-metric { min-height: 74px; padding: 10px; }
+
+.sent-focus-workspace .sent-heading-line h1 { font-size: 25px; }
+.sent-focus-workspace .sent-page-heading { margin-bottom: 10px; }
+.sent-focus-workspace .sent-ladder-heading { margin-bottom: 10px; }
+.sent-focus-workspace .sent-ladder-heading h2 { font-size: 20px; }
+.sent-focus-workspace .sent-market-compact { margin-bottom: 14px; padding-block: 10px; row-gap: 8px; }
+.sent-focus-workspace .sent-ladder-section { padding-top: 14px; }
+.sent-focus-workspace .sent-picker-select { padding-block: 7px; gap: 4px; }
+.sent-focus-main .sent-theme-card { padding: 12px 14px 10px; }
+.sent-theme-summary { padding-bottom: 10px; gap: 8px 18px; }
+.sent-focus-main .sent-theme-title h3 { font-size: 23px; }
+.sent-focus-main .sent-theme-numbers b { font-size: 20px; }
+
+@media (min-width: 960px) {
+  .studio-shell { --studio-sidebar-width: clamp(152px, 12vw, 158px); }
+  .studio-sidebar { padding: 18px 9px 16px; }
+  .studio-sidebar .terminal-brand { padding: 0; gap: 8px; }
+  .studio-sidebar .terminal-brand strong { white-space: nowrap; }
+  .studio-nav-label { margin: 24px 10px 8px; }
+  .studio-sidebar .terminal-nav { gap: 4px; }
+  .studio-sidebar .terminal-nav button { min-height: 36px; gap: 8px; }
+  .studio-header .terminal-topbar, .studio-header .market-index-strip { padding-inline: var(--page-inset); }
+  .studio-header .market-index-strip { grid-template-columns: 156px minmax(0, 1fr); }
+  .studio-shell .stock-search-field { height: 34px; }
+}
+@media (min-width: 1400px) {
+  .studio-shell .decision-grid { grid-template-columns: 196px minmax(420px, 1fr) 250px; }
+}
+@media (max-width: 959px) {
+  /* 手机保留底部导航和触控区，缩短股票列表面板，让图表更早出现。 */
+  .studio-shell { --page-inset: 10px; --topbar-height: 54px; }
+  .studio-sidebar .terminal-brand { top: 9px; }
+  .studio-shell .stock-navigator { height: 254px; }
+  .studio-shell .navigator-stock-row { min-height: 48px; }
+}
+@media (max-width: 600px) {
+  .studio-breadcrumb-prefix { display: none; }
+  .studio-header .studio-panorama-trigger { flex-shrink: 0; }
+  .sent-page-actions { gap: 5px; }
+  .sent-page-actions .sent-scope-select { flex: none; }
+  .sent-scope-select > span { display: none; }
+  .sent-page-actions .sent-date-form { flex: 1 0 138px; flex-wrap: nowrap; gap: 4px; }
+  .sent-page-actions .sent-date-form input { flex: 1; width: 0; }
+  .sent-page-actions .sent-button { padding-inline: 6px; }
+  .studio-shell .stock-quote-head { flex-direction: column; align-items: stretch; }
+  .studio-shell .chart-periods { align-self: flex-start; }
+  .studio-shell .chart-periods button { min-height: 34px; }
+  .sent-focus-main .sent-theme-card { padding-inline: 12px; }
+}
